@@ -4,6 +4,8 @@
 # don't upload projects.json file
 projects.json
 
+/venv
+
 
 .idea/*
 .idea/mapswipe-processing.iml

@@ -1,0 +1,8 @@
+certifi==2018.1.18
+chardet==3.0.4
+GDAL==2.2.4
+idna==2.6
+numpy==1.14.2
+requests==2.18.4
+Shapely==1.6.4.post1
+urllib3==1.22
