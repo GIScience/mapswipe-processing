@@ -41,6 +41,8 @@ def GetSlice(polygon_to_slice, size):
     ymin = extent_pol[2]
     ymax = extent_pol[3]
 
+    logging.debug(extent_pol)
+
     zoom = 18
     # get upper left left tile coordinates
     pixel = lat_long_zoom_to_pixel_coords(ymax, xmin, zoom)
@@ -67,52 +69,28 @@ def GetSlice(polygon_to_slice, size):
     # logging.warning rows
     # get columns
     cols = int(ceil(TileWidth / size))
-    # logging.warning cols
+
+
+    logging.debug('cols: %s' % cols)
+    logging.debug('rows: %s' % rows)
 
     # define zoom
     zoom = 18
 
+    if rows < 1:
+        rows = 1
+    if cols < 1:
+        cols = 1
+
     ############################################################
 
-    for i in range(0, rows + 1):
+    for i in range(0, rows):
         TileX = TileX_left
-        for j in range(0, cols + 1):
+        for j in range(0, cols):
 
-            # Calculate lat, lon of upper left corner of tile
-            PixelX = TileX * 256
-            PixelY = TileY * 256
-            MapSize = 256 * math.pow(2, zoom)
-            x = (PixelX / MapSize) - 0.5
-            y = 0.5 - (PixelY / MapSize)
-            lon_left = round((360 * x), 8)
-            lat_top = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
+            poly = create_grid_polygon(TileX, TileY, zoom, size)
 
-            PixelX = (TileX + 30) * 256
-            PixelY = (TileY + 30) * 256
-
-            MapSize = 256 * math.pow(2, zoom)
-            x = (PixelX / MapSize) - 0.5
-            # logging.warning x
-            # logging.warning y
-            y = 0.5 - (PixelY / MapSize)
-            lon_right = round((360 * x), 8)
-            lat_bottom = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            # logging.warning lon_right
-            # logging.warning lat_bottom
-
-            # Create Geometry
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            ring.AddPoint(lon_left, lat_top)
-            ring.AddPoint(lon_right, lat_top)
-            ring.AddPoint(lon_right, lat_bottom)
-            ring.AddPoint(lon_left, lat_bottom)
-            ring.AddPoint(lon_left, lat_top)
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
-            # logging.warning poly
-
-            snapped_polygon_to_slice_ogr = snap_ogr_geometries(polygon_to_slice, poly, 0.00001)
+            snapped_polygon_to_slice_ogr = snap_ogr_geometries(polygon_to_slice, poly, 0.000001)
             sliced_poly = poly.Intersection(snapped_polygon_to_slice_ogr)
 
             # Check if it is a polygon
@@ -165,10 +143,92 @@ def snap_ogr_geometries(geom_a, geom_b, tolerance):
     shapely_polygon_to_slice = loads(geom_a.ExportToWkt())
     shapely_poly = loads(geom_b.ExportToWkt())
 
+    #print(shapely_polygon_to_slice.is_valid)
+    #print(shapely_poly.is_valid)
+
+
     snapped_polygon_to_slice = snap(shapely_polygon_to_slice, shapely_poly, tolerance)
     snapped_polygon_to_slice_ogr = ogr.CreateGeometryFromWkt(dumps(snapped_polygon_to_slice))
 
     return snapped_polygon_to_slice_ogr
+
+
+def create_grid_polygon(TileX, TileY, zoom, size):
+    '''
+    TileX, TileY --> correspong to Top left Tile
+    size --> defines the width and height of the grid polygon
+    e.g. size = 3 --> 3x3 tiles grid
+
+    for a 3x3 tile grid we define polygon with 13 points
+    (linearring starts and ends at "a")
+
+    a----b----c----d
+    |              |
+    l              e
+    |              |
+    k              f
+    |              |
+    j----i----h----g
+    '''
+    logging.debug('TileX: %s, TileY: %s' % (TileX, TileY))
+
+    pixel_coords = []
+    lon_lat_coords = []
+    grid_poly = ogr.Geometry(ogr.wkbPolygon)
+    ring = ogr.Geometry(ogr.wkbLinearRing)
+
+    PixelX = TileX * 256
+    PixelY = TileY * 256
+    pixel_coords.append([PixelX, PixelY])
+
+    # start with the points on the top (e.g. "a"-"d" for 3x3 polygon)
+    i = 0
+    for i in range(1, size + 1):
+        PixelX += 256
+        # PixelY doesn't change
+        pixel_coords.append([PixelX, PixelY])
+
+    # proceed with the right points, that are not at the top (e.g. "e"-"g" for 3x3 polygon)
+    i = 0
+    for i in range(1, size + 1):
+        # PixelX doesn't change
+        PixelY += 256
+        pixel_coords.append([PixelX, PixelY])
+
+    # proceed with the bottom points (e.g. "h"-"j" for 3x3 polygon)
+    i = 0
+    for i in range(1, size + 1):
+        PixelX -= 256
+        # PixelY doesn't change
+        pixel_coords.append([PixelX, PixelY])
+
+    # proceed with the left points (e.g. "k"-"a" for 3x3 polygon)
+    i = 0
+    for i in range(1, size + 1):
+        # PixelX doesn't change
+        PixelY -= 256
+        pixel_coords.append([PixelX, PixelY])
+
+    # compute lon lat coordinates
+    for PixelX, PixelY in pixel_coords:
+        MapSize = 256 * math.pow(2, zoom)
+        x = (PixelX / MapSize) - 0.5
+        y = 0.5 - (PixelY / MapSize)
+        lon = (360 * x)
+        lat = (90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi)
+        lon_lat_coords.append([lon, lat])
+
+    # add lon lat coordinates to ring
+    for lon, lat in lon_lat_coords:
+        ring.AddPoint(lon, lat)
+
+    # add ring to polygon
+    grid_poly.AddGeometry(ring)
+    if not grid_poly.IsValid():
+        logging.debug(grid_poly)
+
+    return grid_poly
+
 
 
 def GetGrid(polygon_to_grid):
@@ -200,6 +260,9 @@ def GetGrid(polygon_to_grid):
     TileWidth = abs(TileX_right - TileX_left)
     TileHeight = abs(TileY_top - TileY_bottom)
 
+    logging.debug('tile width: %s' % TileWidth)
+    logging.debug('tile height: %s' % TileHeight)
+
     TileY = TileY_top
     TileX = TileX_left
 
@@ -213,49 +276,24 @@ def GetGrid(polygon_to_grid):
     # define zoom
     zoom = 18
 
+    logging.warning('rows: %s' % rows)
+    logging.warning('cols: %s' % cols)
+
+    if rows < 1:
+        rows = 1
+    if cols < 1:
+        cols = 1
+
     ############################################################
 
-    for i in range(0,rows+1):
+    for i in range(0,rows):
         TileX = TileX_left
-        for j in range(0,cols+1):
+        for j in range(0,cols):
 
-            # Calculate lat, lon of upper left corner of tile
-            PixelX = TileX * 256
-            PixelY = TileY * 256
-            MapSize = 256*math.pow(2,zoom)
-            x = (PixelX / MapSize) - 0.5
-            y = 0.5 - (PixelY / MapSize)
-            lon_left = round((360 * x), 8)
-            lat_top = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            PixelX = (TileX+3) * 256
-            PixelY = (TileY+3) * 256
-
-
-            MapSize = 256*math.pow(2,zoom)
-            x = (PixelX / MapSize) - 0.5
-            #logging.warning x
-            #logging.warning y
-            y = 0.5 - (PixelY / MapSize)
-            lon_right = round((360 * x), 8)
-            lat_bottom = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            #logging.warning lon_right
-            #logging.warning lat_bottom
-
-            # Create Geometry
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            ring.AddPoint(lon_left, lat_top)
-            ring.AddPoint(lon_right, lat_top)
-            ring.AddPoint(lon_right, lat_bottom)
-            ring.AddPoint(lon_left, lat_bottom)
-            ring.AddPoint(lon_left, lat_top)
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
-            #logging.warning poly
-
+            poly = create_grid_polygon(TileX, TileY, zoom, 3)
             grid_collection.AddGeometry(poly)
             TileX = TileX + 3
+
         TileY = TileY + 3
     return grid_collection
 
@@ -271,7 +309,7 @@ def IntersectWithGrid(poly, grid):
             continue
         # compute the geometries
 
-        poly = snap_ogr_geometries(poly, grid_geom, 0.000000001)
+        #poly = snap_ogr_geometries(poly, grid_geom, 0.00001)
 
         intersection = grid_geom.Intersection(poly)  # intersection of grid collection and source polygon caused errors
         # check if the outcome of intersection is a multippolygon
@@ -283,6 +321,8 @@ def IntersectWithGrid(poly, grid):
             if intersection.GetArea() < (1*pow(10,-10)):
                 continue
             else:
+                #if not intersection.IsValid():
+                #    print(intersection)
                 intersection_coll.AddGeometry(intersection)
 
         if intersection.GetGeometryName() == "MULTIPOLYGON" or intersection.GetGeometryName() == "GEOMETRYCOLLECTION":
@@ -294,6 +334,8 @@ def IntersectWithGrid(poly, grid):
                     if lo.GetArea() < (1*pow(10,-10)):
                         continue
                     else:
+                        #if not lo.IsValid():
+                        #    print(lo)
                         intersection_coll.AddGeometry(lo)
 
     return intersection_coll
@@ -478,18 +520,38 @@ def create_hot_tm_tasks(project_data_dict):
         count = 0
         for geom in ogr_geometry_collection:
             count += 1
+
             slice_collection = GetSlice(geom, 30)
+            logging.debug('got slice collection, there are %s features' % slice_collection.GetGeometryCount())
+
+
             for feature in slice_collection:
+                logging.debug('start processing for this slice')
                 # start grid function
                 gridCollection = GetGrid(feature)
+                logging.warning('got grid collection for this slice. there are %s features' % gridCollection.GetGeometryCount())
                 intersection_coll = IntersectWithGrid(feature, gridCollection)
+
+
                 # Merge Neighbours
+                logging.debug('start merge smallest neighbours for this slice')
                 pre_step_0 = MergeSmallestNeighbour(intersection_coll)
+                logging.debug('merged first')
                 pre_step_1 = MergeSmallestNeighbour(pre_step_0)
+                logging.debug('merged second')
                 pre_step = MergeSmallestNeighbour(pre_step_1)
-                for q in range(0, pre_step.GetGeometryCount()):
-                    final_geom = pre_step.GetGeometryRef(q)
+                logging.debug('merged third')
+
+                #for q in range(0, pre_step.GetGeometryCount()):
+                #    final_geom = pre_step.GetGeometryRef(q)
+                #    final_coll.AddGeometry(final_geom)
+
+                for q in range(0, intersection_coll.GetGeometryCount()):
+                    final_geom = intersection_coll.GetGeometryRef(q)
                     final_coll.AddGeometry(final_geom)
+
+
+                logging.debug('added geometries to final collection')
 
         final_project_data_dict[project_id] = final_coll
 
