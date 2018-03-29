@@ -104,43 +104,7 @@ def transform_geometry(geometry, in_proj, out_proj):
 
 
 def dissolve_project_data(multipolygon_geometry):
-    # wgs and utm
-    wgs = osr.SpatialReference()
-    wgs.ImportFromEPSG(4326)
-    utm = get_utm_epsg(multipolygon_geometry)
-
-    # transform geometry
-    utm_geometry = transform_geometry(multipolygon_geometry, wgs, utm)
-
-    # Delaunay Triangulation
-    delaunay_geometry = utm_geometry.DelaunayTriangulation()
-    logging.warning('performed delaunay triangulation')
-
-    # Select only valid triangles
-    delaunay_select = ogr.Geometry(ogr.wkbMultiPolygon)
-    for i in range(0, delaunay_geometry.GetGeometryCount()):
-        g = delaunay_geometry.GetGeometryRef(i)
-
-        area = float(g.GetArea())
-        perimeter = g.Boundary().Length()
-        # if (area <= 40000.0) & (perimeter <= 800.0):
-        if (area <= 40000.0) & (perimeter <= 650.0):
-            delaunay_select.AddGeometry(g)
-            continue
-    logging.warning('selected valid triangles')
-
-    # transform geometries
-    wgs_geometry = transform_geometry(delaunay_select, utm, wgs)
-
-    # dissolve all geometries
-    dissolved_geometry = wgs_geometry.UnionCascaded()
-    logging.warning('dissolved geometry')
-
-    # destroy all other things
-    utm_geometry = None
-    delaunay_select = None
-    wgs_geometry = None
-
+    dissolved_geometry = multipolygon_geometry.UnionCascaded()
     return dissolved_geometry
 
 
@@ -221,6 +185,7 @@ def save_dissolved_project_data(dissolved_project_data_dict, output_path, output
         )
         with open(outfile, 'w') as out_file:
             json.dump(dissolved_project_data_dict[project_id]['yes_maybe_results'], out_file)
+        logging.warning('created outfile: %s' % outfile)
 
 
 

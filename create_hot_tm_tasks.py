@@ -6,7 +6,7 @@
 
 #import libs
 
-
+import sys
 import os  # Require module os for file/directory handling
 import logging
 from distutils.dir_util import mkpath
@@ -23,9 +23,9 @@ parser.add_argument('-p', '--projects', nargs='+', required=None, default=None, 
 parser.add_argument('-d', '--data_dir', required=True, type=str,
                     help='data location')
 parser.add_argument('-t', '--output_type', nargs='?', default='geojson',choices=['geojson', 'shp'])
-parser.add_argument('-g', '--group_size', required=None, default=12, type=int,
+parser.add_argument('-g', '--group_size', required=None, default=15, type=int,
                     help='The maximum number of results that will be merged into one mapping task.')
-parser.add_argument('-n_shape', '--neighbourhood_shape', nargs='?', default='star', choices=['star', 'rectangle'],
+parser.add_argument('-n_shape', '--neighbourhood_shape', nargs='?', default='rectangle', choices=['star', 'rectangle'],
                     help='The search neighbourhood shape in tiles which will be used to group results into tasks')
 parser.add_argument('-n_size', '--neighbourhood_size', required=None, default=5, type=int,
                     help='The search neighbourhood size in tiles which will be used to group results into tasks')
@@ -265,10 +265,29 @@ def split_groups(q):
                     new_grouped_data['b'][result] = data
 
         for k in ['a', 'b']:
-            logging.debug('there are %s results in %s' % (len(new_grouped_data['a']), k))
+            logging.debug('there are %s results in %s' % (len(new_grouped_data[k]), k))
+
+            for result, data in new_grouped_data[k].items():
+                x_list.append(int(data['task_x']))
+                y_list.append(int(data['task_y']))
+
+            min_x = min(x_list)
+            max_x = max(x_list)
+            x_width = max_x - min_x
+
+            min_y = min(y_list)
+            max_y = max(y_list)
+            y_width = max_y - min_y
+
+
             if len(new_grouped_data[k]) < group_size:
-                split_groups_list.append(new_grouped_data[k])
-                logging.debug('add "a" to split_groups_dict')
+
+                # add this check to avoid large groups groups with few items
+                if x_width * y_width > 2 * (my_neighbourhood_size * my_neighbourhood_size):
+                    q.put([group_id, new_grouped_data[k], group_size])
+                else:
+                    split_groups_list.append(new_grouped_data[k])
+                    logging.debug('add "a" to split_groups_dict')
             else:
                 # add this group to a queue
                 q.put([group_id, new_grouped_data[k], group_size])
@@ -282,10 +301,14 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
     yes_results_dict = {}
     for result in project_data['yes_maybe_results']:
         yes_results_dict[result['id']] = result
-    logging.warning('create results dictionary. there are %s results.' % len(yes_results_dict))
+    logging.warning('created results dictionary. there are %s results.' % len(yes_results_dict))
 
     global neighbour_list
+    global my_neighbourhood_size
+    my_neighbourhood_size = neighbourhood_size
+
     neighbour_list = get_neighbour_list(neighbourhood_shape, neighbourhood_size)
+    logging.warning('got neighbour list. neighbourhood_shape: %s, neighbourhood_size: %s' % (neighbourhood_shape, neighbourhood_size))
 
     global split_groups_list
     split_groups_list = []
@@ -312,12 +335,16 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
 
         check_neighbours(task_x, task_y, group_id)
 
+    logging.warning('added group ids to yes maybe results dict')
+
     # check if some tasks have different groups from their neighbours
     duplicates_dict = create_duplicates_dict()
     while len(duplicates_dict) > 0:
         remove_duplicates(duplicates_dict)
         duplicates_dict = create_duplicates_dict()
         logging.debug('there are %s duplicated groups' % len(duplicates_dict))
+
+    logging.warning('removed all duplicated group ids in yes maybe results dict')
 
     grouped_results_dict = {}
     for task_id in yes_results_dict.keys():
@@ -328,12 +355,14 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
             grouped_results_dict[group_id] = {}
             grouped_results_dict[group_id][task_id] = yes_results_dict[task_id]
 
+    logging.warning('created dict item for each group')
+
     # reset highest group id since we merged several groups
     highest_group_id = max(grouped_results_dict)
     logging.debug('new highest group id: %s' % highest_group_id)
 
     q = Queue(maxsize=0)
-    num_threads = 8
+    num_threads = 1
 
     for group_id in grouped_results_dict.keys():
 
@@ -344,6 +373,8 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
             # add this group to the queue
             q.put([group_id, group_data, group_size])
 
+    logging.warning('added groups to queue.')
+
     for i in range(num_threads):
         worker = threading.Thread(
             target=split_groups,
@@ -351,6 +382,7 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
         worker.start()
 
     q.join()
+    logging.warning('split all groups.')
 
     logging.debug('there are %s split groups' % len(split_groups_list))
 
@@ -397,3 +429,4 @@ if __name__ == '__main__':
     project_data_dict = create_project_data_dict(args.projects, args.data_dir)
     final_project_data_dict = create_hot_tm_tasks(project_data_dict, args.group_size, args.neighbourhood_shape, args.neighbourhood_size)
     save_project_data(final_project_data_dict, args.data_dir, args.output_type)
+    sys.exit()

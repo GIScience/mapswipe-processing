@@ -4,6 +4,7 @@
 ########################################################################################################################
 
 import os
+import sys
 from download_data import download_data
 from download_data import save_downloaded_project_data
 from create_hot_tm_tasks import create_hot_tm_tasks
@@ -26,6 +27,12 @@ parser.add_argument('-o', '--output_path', required=None, type=str, default='dat
                     help='output location')
 parser.add_argument('-t', '--output_type', nargs='?', default='geojson', choices=['geojson', 'shp'])
 parser.add_argument('-mo', '--modus', nargs='?', default='hot_tm',choices=['hot_tm', 'download', 'dissolve', 'all'])
+parser.add_argument('-g', '--group_size', required=None, default=15, type=int,
+                    help='The maximum number of results that will be merged into one mapping task.')
+parser.add_argument('-n_shape', '--neighbourhood_shape', nargs='?', default='rectangle', choices=['star', 'rectangle'],
+                    help='The search neighbourhood shape in tiles which will be used to group results into tasks')
+parser.add_argument('-n_size', '--neighbourhood_size', required=None, default=5, type=int,
+                    help='The search neighbourhood size in tiles which will be used to group results into tasks')
 ########################################################################################################################
 
 
@@ -73,8 +80,8 @@ def get_updated_projects(old_project_data, new_project_data):
     return project_id_list
 
 
-def run_mapswipe_processing(project_id_list, output_path, output_type, modus, all_projects):
-    logging.basicConfig(filename='run_mapswipe_tools.log',
+def run_mapswipe_processing(project_id_list, output_path, output_type, modus, all_projects, group_size, neighbourhood_shape, neighbourhood_size):
+    logging.basicConfig(filename='run_mapswipe_processing.log',
                         level=logging.WARNING,
                         format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%m-%d %H:%M:%S',
@@ -112,9 +119,9 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
             save_project_file(project_data_filename, new_project_data)
         sys.exit('stop after dissolve')
 
-    final_project_data_dict = create_hot_tm_tasks(dissolved_project_data_dict)
+    final_project_data_dict = create_hot_tm_tasks(dissolved_project_data_dict, group_size, neighbourhood_shape, neighbourhood_size)
     if modus == 'hot_tm':
-        save_project_data(final_project_data_dict, output_path, 'geojson')
+        save_project_data(final_project_data_dict, output_path, output_type)
         if all_projects:
             save_project_file(project_data_filename, new_project_data)
         sys.exit('stop after tasks created')
@@ -126,8 +133,6 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         if all_projects:
             save_project_file(project_data_filename, new_project_data)
 
-
-
 ########################################################################################################################
 if __name__ == '__main__':
     try:
@@ -135,4 +140,6 @@ if __name__ == '__main__':
     except:
         print('have a look at the input arguments, something went wrong there.')
 
-    run_mapswipe_processing(args.projects, args.output_path, args.output_type, args.modus, args.all_projects)
+    run_mapswipe_processing(args.projects, args.output_path, args.output_type, args.modus, args.all_projects,
+                            args.group_size, args.neighbourhood_shape, args.neighbourhood_size)
+
