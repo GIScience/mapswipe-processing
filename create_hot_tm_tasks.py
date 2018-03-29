@@ -9,6 +9,7 @@
 
 import os  # Require module os for file/directory handling
 import logging
+import math
 from distutils.dir_util import mkpath
 import math # calculations etc
 import numpy as np#arrays
@@ -303,13 +304,16 @@ def IntersectWithGrid(poly, grid):
     # loop throguh grid features
     for e in range(0, grid.GetGeometryCount()):
         grid_geom = grid.GetGeometryRef(e)
+
+
+
         # check if geometries are intersecting
         #if grid_geom.Intersects(poly) == False:
         if grid_geom.Intersects(poly) == False:
             continue
         # compute the geometries
 
-        #poly = snap_ogr_geometries(poly, grid_geom, 0.00001)
+        poly = snap_ogr_geometries(poly, grid_geom, 0.000001)
 
         intersection = grid_geom.Intersection(poly)  # intersection of grid collection and source polygon caused errors
         # check if the outcome of intersection is a multippolygon
@@ -424,17 +428,23 @@ def create_project_data_dict(project_id_list, data_dir):
 
     for project_id in project_id_list:
 
-        project_data_file = '{data_dir}/{project_id}/yes_maybe_{project_id}.geojson'.format(
+        project_data_file = '{data_dir}/{project_id}/yes_maybe_results_{project_id}.json'.format(
             data_dir=data_dir,
             project_id=project_id
         )
+        logging.warning(project_data_file)
+
         if not os.path.isfile(project_data_file):
             continue
 
-        ogr_geometry_collection = load_geom_from_geojson(project_data_file)
-        project_data_dict[project_id] = {
-            "yes_maybe": ogr_geometry_collection
-        }
+        import json
+        with open(project_data_file, 'r') as project_data_f:
+            project_data = json.load(project_data_f)
+
+            #ogr_geometry_collection = load_geom_from_geojson(project_data_file)
+            project_data_dict[project_id] = {
+                "yes_maybe_results": project_data
+            }
 
     return project_data_dict
 
@@ -499,6 +509,168 @@ def save_project_data(final_project_data_dict, output_path, output_type):
         create_geofile(final_project_data_dict[project_id], outfile, output_type)
 
 
+def check_neighbours(task_x, task_y, group_id):
+    # potential neighbours
+    neighbour_list = [
+        [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2],
+        [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+        [-2, 0], [-1, 0], [1, 0], [2, 0],
+        [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+        [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2]
+    ]
+
+    # look for neighbours
+    neighbours = []
+    for i, j in neighbour_list:
+        new_task_x = int(task_x) + i
+        new_task_y = int(task_y) + j
+        new_task_id = '18-{task_x}-{task_y}'.format(
+            task_x=new_task_x,
+            task_y=new_task_y
+        )
+
+        if new_task_id in yes_results_dict:
+            yes_results_dict[new_task_id]['my_group_id'] = group_id
+            neighbours.append(new_task_id)
+
+
+def create_duplicates_dict():
+    duplicated_groups = {}
+    for task_id in yes_results_dict.keys():
+        my_group_id = yes_results_dict[task_id]['my_group_id']
+        # check for other results in the neighbourhood
+        task_x = yes_results_dict[task_id]['task_x']
+        task_y = yes_results_dict[task_id]['task_y']
+
+        '''
+        neighbour_list = [
+            [-2, -2], [-1, -2], [0, -2], [1, -2], [2, -2],
+            [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+            [-2, 0], [-1, 0], [1, 0], [2, 0],
+            [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+            [-2, 2], [-1, 2], [0, 2], [1, 2], [2, 2]
+        ]
+        '''
+
+        neighbour_list = [
+             [-1, -2], [0, -2], [1, -2],
+            [-2, -1], [-1, -1], [0, -1], [1, -1], [2, -1],
+            [-2, 0], [-1, 0], [1, 0], [2, 0],
+            [-2, 1], [-1, 1], [0, 1], [1, 1], [2, 1],
+            [-1, 2], [0, 2], [1, 2]
+        ]
+
+        # look for neighbours
+        neighbours = []
+        for i, j in neighbour_list:
+            new_task_x = int(task_x) + i
+            new_task_y = int(task_y) + j
+            new_task_id = '18-{task_x}-{task_y}'.format(
+                task_x=new_task_x,
+                task_y=new_task_y
+            )
+
+            if new_task_id in yes_results_dict:
+                neighbours_group_id = yes_results_dict[new_task_id]['my_group_id']
+                if neighbours_group_id != my_group_id:
+                    # add the other group to duplicated groups dict
+                    try:
+                        duplicated_groups[my_group_id].add(neighbours_group_id)
+                    except:
+                        duplicated_groups[my_group_id] = set([neighbours_group_id])
+                    # add my_group_id to other groupd_id in duplicated dict
+                    try:
+                        duplicated_groups[neighbours_group_id].add(my_group_id)
+                    except:
+                        duplicated_groups[neighbours_group_id] = set([my_group_id])
+
+    return duplicated_groups
+
+
+def remove_duplicates(duplicated_groups):
+    for duplicated_group_id in sorted(duplicated_groups.keys(), reverse=True):
+        #logging.warning('%s: %s' % (duplicated_group_id, list(duplicated_groups[duplicated_group_id])))
+        my_duplicated_group_id = duplicated_group_id
+        for other_group_id in duplicated_groups[duplicated_group_id]:
+            if other_group_id < my_duplicated_group_id:
+                my_duplicated_group_id = other_group_id
+
+        for task_id in yes_results_dict.keys():
+            if yes_results_dict[task_id]['my_group_id'] == duplicated_group_id:
+                yes_results_dict[task_id]['my_group_id'] = my_duplicated_group_id
+
+
+def get_utm_epsg(geometry):
+    # get latitude of centroid
+    extent = geometry.GetEnvelope()
+
+    minX = extent[0]
+    maxX = extent[1]
+    # calc centroid
+
+    center_lat = minX + (maxX - minX)
+    utm_epsg = int((32600 + ((center_lat + 186) / 6)))
+    utm = osr.SpatialReference()
+    utm.ImportFromEPSG(utm_epsg)
+
+    return utm
+
+
+def transform_geometry(geometry, in_proj, out_proj):
+    # transform geometry
+    transform = osr.CoordinateTransformation(in_proj, out_proj)
+    geometry.Transform(transform)
+    logging.debug('transformed geometry')
+    return geometry
+
+
+def create_group_geom_for_small_groups(group_data):
+    result_geom_collection = ogr.Geometry(ogr.wkbMultiPolygon)
+    group_geom = ogr.Geometry(ogr.wkbMultiPolygon)
+    for result, data in group_data.items():
+        result_geom = ogr.CreateGeometryFromWkt(data['wkt'])
+        result_geom_collection.AddGeometry(result_geom)
+
+    # wgs and utm
+    wgs = osr.SpatialReference()
+    wgs.ImportFromEPSG(4326)
+    utm = get_utm_epsg(result_geom_collection)
+
+    # transform geometry
+    utm_geometry = transform_geometry(result_geom_collection, wgs, utm)
+
+    delaunay_select = ogr.Geometry(ogr.wkbMultiPolygon)
+    delaunay_geom_collection = utm_geometry.DelaunayTriangulation()
+    for geom in delaunay_geom_collection:
+        # Select only valid triangles
+        area = float(geom.GetArea())
+        perimeter = geom.Boundary().Length()
+        # if (area <= 40000.0) & (perimeter <= 800.0):
+        if (area <= 45000.0) & (perimeter <= 950.0):
+            delaunay_select.AddGeometry(geom)
+            continue
+    logging.debug('selected valid triangles')
+    # transform geometries
+    wgs_delaunay_select = transform_geometry(delaunay_select, utm, wgs)
+
+    group_geom = wgs_delaunay_select.UnionCascaded()
+    return group_geom
+
+
+def split_up_bigger_groups(group_id, group_data):
+    logging.warning('the group (%s) has %s members' % (group_id, len(group_data)))
+
+    group_threshold = 9
+
+    targeted_group_number = math.floor(len(group_data)/group_threshold) + 1
+    logging.warning(targeted_group_number)
+
+    smaller_groups = ''
+
+    return smaller_groups
+
+
+
 ########################################################################################################################
 
 
@@ -507,55 +679,189 @@ def create_hot_tm_tasks(project_data_dict):
 
     final_project_data_dict = {}
 
+
     for project_id, project_data in project_data_dict.items():
 
-        ogr_geometry_collection = project_data['yes_maybe']
-        logging.warning('project %s, start create_hot_tm_tasks function' % project_id)
+        groups_dict = {}
 
         # create output geometry collections
         final_coll = ogr.Geometry(ogr.wkbGeometryCollection)
-        logging.warning('got %s geometries in input geometry collection.' % ogr_geometry_collection.GetGeometryCount())
 
-        # loop through every geometry in given input geometry collection
-        count = 0
-        for geom in ogr_geometry_collection:
-            count += 1
+        # create a dictionary with the results
+        global yes_results_dict
+        yes_results_dict = {}
+        for result in project_data['yes_maybe_results']:
+            yes_results_dict[result['id']] = result
+        logging.warning('create results dictionary. there are %s results.' % len(yes_results_dict))
 
-            slice_collection = GetSlice(geom, 30)
-            logging.debug('got slice collection, there are %s features' % slice_collection.GetGeometryCount())
+        highest_group_id = 0
+        # test for neighbors and set groups id
+        counter = 0
 
+        for task_id in sorted(yes_results_dict.keys()):
+            logging.warning(task_id)
+            counter += 1
+            logging.warning(counter)
+            try:
+                # this task has already a group id, great.
+                group_id = yes_results_dict[task_id]['my_group_id']
+            except:
+                group_id = highest_group_id + 1
+                highest_group_id += 1
+                yes_results_dict[task_id]['my_group_id'] = group_id
+                logging.warning('created new group id')
 
-            for feature in slice_collection:
-                logging.debug('start processing for this slice')
-                # start grid function
-                gridCollection = GetGrid(feature)
-                logging.warning('got grid collection for this slice. there are %s features' % gridCollection.GetGeometryCount())
-                intersection_coll = IntersectWithGrid(feature, gridCollection)
+            logging.warning('group id: %s' % group_id)
 
+            # check for other results in the neighbourhood
+            task_x = yes_results_dict[task_id]['task_x']
+            task_y = yes_results_dict[task_id]['task_y']
 
-                # Merge Neighbours
-                logging.debug('start merge smallest neighbours for this slice')
-                pre_step_0 = MergeSmallestNeighbour(intersection_coll)
-                logging.debug('merged first')
-                pre_step_1 = MergeSmallestNeighbour(pre_step_0)
-                logging.debug('merged second')
-                pre_step = MergeSmallestNeighbour(pre_step_1)
-                logging.debug('merged third')
-
-                #for q in range(0, pre_step.GetGeometryCount()):
-                #    final_geom = pre_step.GetGeometryRef(q)
-                #    final_coll.AddGeometry(final_geom)
-
-                for q in range(0, intersection_coll.GetGeometryCount()):
-                    final_geom = intersection_coll.GetGeometryRef(q)
-                    final_coll.AddGeometry(final_geom)
+            neighbours = check_neighbours(task_x, task_y, group_id)
 
 
-                logging.debug('added geometries to final collection')
+        # check if some tasks have different groups from their neighbours
+        duplicates_dict = create_duplicates_dict()
+        while len(duplicates_dict) > 0:
+            remove_duplicates(duplicates_dict)
+            duplicates_dict = create_duplicates_dict()
+            logging.warning(len(duplicates_dict))
 
-        final_project_data_dict[project_id] = final_coll
+        grouped_results_dict = {}
+        for task_id in yes_results_dict.keys():
+            group_id = yes_results_dict[task_id]['my_group_id']
+            try:
+                grouped_results_dict[group_id][task_id] = yes_results_dict[task_id]
+            except:
+                grouped_results_dict[group_id] = {}
+                grouped_results_dict[group_id][task_id] = yes_results_dict[task_id]
 
-    return final_project_data_dict
+        logging.warning(len(grouped_results_dict))
+
+
+        # create geojson for groups
+        # create geojson file for testing with output
+        # set driver for shapefile or geojson
+        output_type = 'geojson'
+        outfile = 'yes_maybe_groups.geojson'
+        if output_type == 'shp':
+            driver = ogr.GetDriverByName('ESRI Shapefile')
+        elif output_type == 'geojson':
+            driver = ogr.GetDriverByName('GeoJSON')
+        # define spatial Reference
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        if os.path.exists(outfile):
+            driver.DeleteDataSource(outfile)
+        dataSource = driver.CreateDataSource(outfile)
+        # create layer
+        layer = dataSource.CreateLayer(outfile, srs, geom_type=ogr.wkbPolygon)
+        # create fields
+        group_id_field = ogr.FieldDefn('group_id', ogr.OFTInteger)
+        layer.CreateField(group_id_field)
+
+        # go through all groups
+        big_groups_counter = 0
+        for group_id in grouped_results_dict.keys():
+
+            if len(grouped_results_dict[group_id]) < 1:
+                logging.warning('empty group?')
+                logging.warning(grouped_results_dict[group_id])
+            elif len(grouped_results_dict[group_id]) < 9:
+                #logging.warning('this is a small group: %s' % group_id)
+                group_data = grouped_results_dict[group_id]
+                group_geom = create_group_geom_for_small_groups(group_data)
+                grouped_results_dict[group_id]['group_geom'] = group_geom
+
+                # init feature
+                featureDefn = layer.GetLayerDefn()
+                feature = ogr.Feature(featureDefn)
+                # create polygon from wkt and set geometry
+                feature.SetGeometry(group_geom)
+                # set other attributes
+                feature.SetField('group_id', group_id)
+                # add feature to layer
+                layer.CreateFeature(feature)
+
+
+            else:
+                big_groups_counter += 1
+                group_data = grouped_results_dict[group_id]
+                split_up_bigger_groups(group_id, group_data)
+                #logging.warning('this is a big group: %s' % group_id)
+
+        logging.warning(big_groups_counter)
+        layer = None
+        dataSoure = None
+        logging.warning('created outfile: %s.' % outfile)
+
+
+        # replace the duplicated groups
+        #logging.warning(duplicated_groups)
+        '''
+        for task_id in yes_results_dict.keys():
+            my_group_id = yes_results_dict[task_id]['my_group_id']
+
+            # are there other group ids?
+            if my_group_id in duplicated_groups:
+                for other_group_id in duplicated_groups[my_group_id]:
+                    if other_group_id < my_group_id:
+                        my_group_id = other_group_id
+
+                #replace my group id
+        '''
+
+
+
+
+
+
+
+        # create geojson file for testing with output
+        # set driver for shapefile or geojson
+        output_type = 'geojson'
+        outfile = 'yes_maybe_grouped.geojson'
+        if output_type == 'shp':
+            driver = ogr.GetDriverByName('ESRI Shapefile')
+        elif output_type == 'geojson':
+            driver = ogr.GetDriverByName('GeoJSON')
+        # define spatial Reference
+        srs = osr.SpatialReference()
+        srs.ImportFromEPSG(4326)
+        if os.path.exists(outfile):
+            driver.DeleteDataSource(outfile)
+        dataSource = driver.CreateDataSource(outfile)
+        # create layer
+        layer = dataSource.CreateLayer(outfile, srs, geom_type=ogr.wkbPolygon)
+
+        # create fields
+        field_id = ogr.FieldDefn('id', ogr.OFTString)
+        layer.CreateField(field_id)
+        group_id_field = ogr.FieldDefn('my_group_id', ogr.OFTInteger)
+        layer.CreateField(group_id_field)
+
+        counter = 0
+        for task_id in yes_results_dict.keys():
+            counter += 1
+            # init feature
+            featureDefn = layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            # create polygon from wkt and set geometry
+            geom = ogr.CreateGeometryFromWkt(yes_results_dict[task_id]['wkt'])
+            feature.SetGeometry(geom)
+            # set other attributes
+            feature.SetField('id', task_id)
+            feature.SetField('my_group_id', yes_results_dict[task_id]['my_group_id'])
+            # add feature to layer
+            layer.CreateFeature(feature)
+
+        layer = None
+        dataSoure = None
+        logging.warning('created outifle: %s.' % outfile)
+
+    import sys
+    sys.exit()
+    #return final_project_data_dict
 
 
 ########################################################################################################################

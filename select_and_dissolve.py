@@ -212,6 +212,17 @@ def save_dissolved_project_data(dissolved_project_data_dict, output_path, output
         )
         create_geofile(dissolved_project_data_dict[project_id]['bad_image'], outfile, output_type)
 
+        # save yes maybe results
+        outfile = '{final_output_path}/yes_maybe_results_{project_id}.json'.format(
+            final_output_path=final_output_path,
+            project_id=project_id,
+            output_type=output_type
+
+        )
+        with open(outfile, 'w') as out_file:
+            json.dump(dissolved_project_data_dict[project_id]['yes_maybe_results'], out_file)
+
+
 
 ########################################################################################################################
 def select_and_dissolve(project_data_dict):
@@ -227,14 +238,15 @@ def select_and_dissolve(project_data_dict):
         dissolved_yes_maybe_geometry = dissolve_project_data(multipolygon_geometry)
 
         # filter bad image
-        filtered_project_data = filter_project_data(project_data, 'bad_image')
-        multipolygon_geometry = multipolygon_from_project_data(filtered_project_data)
+        filtered_project_data_bad = filter_project_data(project_data, 'bad_image')
+        multipolygon_geometry = multipolygon_from_project_data(filtered_project_data_bad)
         dissolved_bad_image_geometry = dissolve_project_data(multipolygon_geometry)
 
         # add to dictionary
         dissolved_project_data_dict[project_id] = {
             "yes_maybe": dissolved_yes_maybe_geometry,
-            "bad_image": dissolved_bad_image_geometry
+            "bad_image": dissolved_bad_image_geometry,
+            "yes_maybe_results": filtered_project_data
         }
 
     return dissolved_project_data_dict
