@@ -10,7 +10,8 @@ import sys
 import os  # Require module os for file/directory handling
 import logging
 from distutils.dir_util import mkpath
-from osgeo import ogr, osr #handling shapefiles
+import ogr
+import osr
 from queue import Queue
 import threading
 from tile_functions import *
