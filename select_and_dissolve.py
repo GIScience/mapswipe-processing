@@ -128,17 +128,20 @@ def create_geofile(geometries, outfile, output_type):
     layer.CreateField(field_id)
 
     counter = 0
-    for geom in geometries:
-        counter += 1
-        # init feature
-        featureDefn = layer.GetLayerDefn()
-        feature = ogr.Feature(featureDefn)
-        # create polygon from wkt and set geometry
-        feature.SetGeometry(geom)
-        # set other attributes
-        feature.SetField('id', counter)
-        # add feature to layer
-        layer.CreateFeature(feature)
+    if not geometries:
+        logging.warning('there are no geometries to save')
+    else:
+        for geom in geometries:
+            counter += 1
+            # init feature
+            featureDefn = layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            # create polygon from wkt and set geometry
+            feature.SetGeometry(geom)
+            # set other attributes
+            feature.SetField('id', counter)
+            # add feature to layer
+            layer.CreateFeature(feature)
 
     layer = None
     dataSoure = None
