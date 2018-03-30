@@ -80,19 +80,22 @@ def create_geofile(final_groups_dict, outfile, output_type):
     field_id = ogr.FieldDefn('group_id', ogr.OFTInteger)
     layer.CreateField(field_id)
 
-    for group_id in final_groups_dict.keys():
-        group_data = final_groups_dict[group_id]
-        group_geom = create_group_geom(group_data)
-        final_groups_dict[group_id]['group_geom'] = group_geom
-        # init feature
-        featureDefn = layer.GetLayerDefn()
-        feature = ogr.Feature(featureDefn)
-        # create polygon from wkt and set geometry
-        feature.SetGeometry(group_geom)
-        # set other attributes
-        feature.SetField('group_id', group_id)
-        # add feature to layer
-        layer.CreateFeature(feature)
+    if len(final_groups_dict) < 1:
+        logging.warning('there are no geometries to save')
+    else:
+        for group_id in final_groups_dict.keys():
+            group_data = final_groups_dict[group_id]
+            group_geom = create_group_geom(group_data)
+            final_groups_dict[group_id]['group_geom'] = group_geom
+            # init feature
+            featureDefn = layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            # create polygon from wkt and set geometry
+            feature.SetGeometry(group_geom)
+            # set other attributes
+            feature.SetField('group_id', group_id)
+            # add feature to layer
+            layer.CreateFeature(feature)
 
     layer = None
     dataSoure = None
@@ -297,12 +300,19 @@ def split_groups(q):
 
 
 def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neighbourhood_size):
+
+    # final groups dict will store the groups that are exported
+    final_groups_dict = {}
+    highest_group_id = 0
+
     # create a dictionary with all results
     global yes_results_dict
     yes_results_dict = {}
     for result in project_data['yes_maybe_results']:
         yes_results_dict[result['id']] = result
     logging.warning('created results dictionary. there are %s results.' % len(yes_results_dict))
+    if len(yes_results_dict) < 1:
+        return final_groups_dict
 
     global neighbour_list
     global my_neighbourhood_size
@@ -314,9 +324,7 @@ def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neig
     global split_groups_list
     split_groups_list = []
 
-    # final groups dict will store the groups that are exported
-    final_groups_dict = {}
-    highest_group_id = 0
+
 
     # test for neighbors and set groups id
     for task_id in sorted(yes_results_dict.keys()):
