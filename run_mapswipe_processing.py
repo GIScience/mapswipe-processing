@@ -97,7 +97,7 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         old_project_data = get_old_project_data(project_data_filename)
         if not old_project_data:
             # get new project data
-            project_data = get_new_project_data()
+            new_project_data = get_new_project_data()
             project_id_list = list(project_data.keys())
         else:
             new_project_data = get_new_project_data()
@@ -109,16 +109,12 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         if modus == 'download':
             # save output as specified
             save_downloaded_project_data(project_data_dict, output_path, output_type)
-            if all_projects:
-                save_project_file(project_data_filename, new_project_data)
             continue
 
         dissolved_project_data_dict = select_and_dissolve(project_data_dict)
         if modus == 'dissolve':
             # save output as specified
             save_dissolved_project_data(dissolved_project_data_dict, output_path, output_type)
-            if all_projects:
-                save_project_file(project_data_filename, new_project_data)
             continue
 
         final_project_data_dict = create_hot_tm_tasks(dissolved_project_data_dict, group_size, neighbourhood_shape, neighbourhood_size)
