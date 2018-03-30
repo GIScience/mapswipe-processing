@@ -77,6 +77,7 @@ def get_updated_projects(old_project_data, new_project_data):
         else:
             pass
     logging.warning('returned list with updated projects: %s' % project_id_list)
+    project_id_list = sorted(project_id_list)
     return project_id_list
 
 
