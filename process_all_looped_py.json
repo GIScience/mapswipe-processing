@@ -2,7 +2,7 @@
   "name": "run_mapswipe_processing",
   "script": "run_mapswipe_processing.py",
   "cwd": "/data/mapswipe-processing/",
-  "exec_interpreter": "/home/mapswipe-processing/venv/bin/python",
+  "exec_interpreter": "/data/mapswipe-processing/venv/bin/python",
   "log_date_format": "YYYY-MM-DD HH:mm Z",
   "autorestart": true,
   "args": ["-a", "-mo=all", "-l", "-m=1", "-s=10800", "-o=/var/www/html/processing/data"]

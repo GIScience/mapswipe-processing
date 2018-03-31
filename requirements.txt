@@ -3,6 +3,8 @@ chardet==3.0.4
 GDAL==2.2.4
 idna==2.6
 numpy==1.14.2
+pkg-resources==0.0.0
 requests==2.18.4
+rocketchat-API==0.6.5
 Shapely==1.6.4
 urllib3==1.22
