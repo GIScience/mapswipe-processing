@@ -5,6 +5,7 @@
 
 import os
 import sys
+sys.path.insert(0, '../utils')
 from download_data import download_data
 from download_data import save_downloaded_project_data
 from create_hot_tm_tasks import create_hot_tm_tasks
@@ -16,6 +17,7 @@ import logging
 import sys
 import json
 import requests
+import error_handling
 
 # define arguments that can be passed by the user
 parser = argparse.ArgumentParser(description='Process some integers.')
@@ -33,6 +35,12 @@ parser.add_argument('-n_shape', '--neighbourhood_shape', nargs='?', default='rec
                     help='The search neighbourhood shape in tiles which will be used to group results into tasks')
 parser.add_argument('-n_size', '--neighbourhood_size', required=None, default=5, type=int,
                     help='The search neighbourhood size in tiles which will be used to group results into tasks')
+parser.add_argument('-l', '--loop', dest='loop', action='store_true',
+                    help='if loop is set, the import will be repeated several times. You can specify the behaviour using --sleep_time and/or --max_iterations.')
+parser.add_argument('-s', '--sleep_time', required=False, default=None, type=int,
+                    help='the time in seconds for which the script will pause in beetween two imports')
+parser.add_argument('-m', '--max_iterations', required=False, default=None, type=int,
+                    help='the maximum number of imports that should be performed')
 ########################################################################################################################
 
 
@@ -144,6 +152,50 @@ if __name__ == '__main__':
     except:
         print('have a look at the input arguments, something went wrong there.')
 
-    run_mapswipe_processing(args.projects, args.output_path, args.output_type, args.modus, args.all_projects,
-                            args.group_size, args.neighbourhood_shape, args.neighbourhood_size)
+    # check whether arguments are correct
+    if args.loop and (args.max_iterations is None):
+        parser.error('if you want to loop the script please provide number of maximum iterations.')
+    elif args.loop and (args.sleep_time is None):
+        parser.error('if you want to loop the script please provide a sleep interval.')
+
+    # create a variable that counts the number of imports
+    counter = 1
+    x = 1
+
+    while x > 0:
+
+        print(' ')
+        print('###### ###### ###### ######')
+        print('###### iteration: %s ######' % counter)
+        print('###### ###### ###### ######')
+
+        # this runs the script and sends an email if an error happens within the execution
+        try:
+            run_mapswipe_processing(args.projects, args.output_path, args.output_type, args.modus, args.all_projects,
+                                    args.group_size, args.neighbourhood_shape, args.neighbourhood_size)
+        except Exception as error:
+            error_handling.send_error(error, 'processing_workflow.py')
+
+        # check if the script should be looped
+        if args.loop:
+            if args.max_iterations > counter:
+                counter = counter + 1
+                print('import finished. will pause for %s seconds' % args.sleep_time)
+                x = 1
+                time.sleep(args.sleep_time)
+            else:
+                x = 0
+                # print('import finished and max iterations reached. stop here.')
+                print('import finished and max iterations reached. sleeping now.')
+                time.sleep(args.sleep_time)
+        # the script should run only once
+        else:
+            print("Don't loop. Stop after the first run.")
+            x = 0
+
+
+
+
+
+
 
