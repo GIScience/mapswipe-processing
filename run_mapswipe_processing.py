@@ -66,7 +66,6 @@ def get_updated_projects(old_project_data, new_project_data):
 
     for project_id, data in new_project_data.items():
         if len(data) < 12:
-            logging.warning('project missed information.')
             continue
         # test if something changed
         elif project_id not in old_project_data.keys():
@@ -95,10 +94,11 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         # check for existing projects.json file
         project_data_filename = 'projects.json'
         old_project_data = get_old_project_data(project_data_filename)
+        logging.warning(old_project_data)
         if not old_project_data:
             # get new project data
             new_project_data = get_new_project_data()
-            project_id_list = list(project_data.keys())
+            project_id_list = list(new_project_data.keys())
         else:
             new_project_data = get_new_project_data()
             project_id_list = get_updated_projects(old_project_data, new_project_data)
