@@ -113,34 +113,33 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
 
     if not project_id_list:
         logging.warning('no projects need an update')
-        sys.exit('no projects need an update')
     else:
         project_id_list = sorted(project_id_list)
         logging.warning('will process the following projects: %s' % project_id_list)
 
-    for project_id in project_id_list:
+        for project_id in project_id_list:
 
-        project_data_dict = download_data([project_id])
-        if modus == 'download':
-            # save output as specified
-            save_downloaded_project_data(project_data_dict, output_path, output_type)
-            continue
+            project_data_dict = download_data([project_id])
+            if modus == 'download':
+                # save output as specified
+                save_downloaded_project_data(project_data_dict, output_path, output_type)
+                continue
 
-        dissolved_project_data_dict = select_and_dissolve(project_data_dict)
-        if modus == 'dissolve':
-            # save output as specified
-            save_dissolved_project_data(dissolved_project_data_dict, output_path, output_type)
-            continue
+            dissolved_project_data_dict = select_and_dissolve(project_data_dict)
+            if modus == 'dissolve':
+                # save output as specified
+                save_dissolved_project_data(dissolved_project_data_dict, output_path, output_type)
+                continue
 
-        final_project_data_dict = create_hot_tm_tasks(dissolved_project_data_dict, group_size, neighbourhood_shape, neighbourhood_size)
-        if modus == 'hot_tm':
-            save_project_data(final_project_data_dict, output_path, output_type)
-            continue
+            final_project_data_dict = create_hot_tm_tasks(dissolved_project_data_dict, group_size, neighbourhood_shape, neighbourhood_size)
+            if modus == 'hot_tm':
+                save_project_data(final_project_data_dict, output_path, output_type)
+                continue
 
-        if modus == 'all':
-            save_downloaded_project_data(project_data_dict, output_path, output_type)
-            save_dissolved_project_data(dissolved_project_data_dict, output_path, output_type)
-            save_project_data(final_project_data_dict, output_path, output_type)
+            if modus == 'all':
+                save_downloaded_project_data(project_data_dict, output_path, output_type)
+                save_dissolved_project_data(dissolved_project_data_dict, output_path, output_type)
+                save_project_data(final_project_data_dict, output_path, output_type)
 
     if all_projects:
         save_project_file(project_data_filename, new_project_data)
