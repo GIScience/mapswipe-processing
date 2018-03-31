@@ -58,7 +58,7 @@ def get_old_project_data(filename):
         logging.warning('got "old" project data local file')
         return project_data
     else:
-        logging.warning('couldn't get "old" project data local file')
+        logging.warning("couldn't get "old" project data local file")
         return False
 
 
