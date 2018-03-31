@@ -5,7 +5,7 @@
 
 import os
 import sys
-sys.path.insert(0, '../utils')
+sys.path.insert(0, 'utils')
 from download_data import download_data
 from download_data import save_downloaded_project_data
 from create_hot_tm_tasks import create_hot_tm_tasks
