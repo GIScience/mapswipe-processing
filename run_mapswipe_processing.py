@@ -66,6 +66,7 @@ def get_updated_projects(old_project_data, new_project_data):
 
     for project_id, data in new_project_data.items():
         if len(data) < 12:
+            logging.warning('project missed information.')
             continue
         # test if something changed
         elif project_id not in old_project_data.keys():
