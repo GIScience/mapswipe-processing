@@ -95,9 +95,6 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         # check for existing projects.json file
         project_data_filename = 'projects.json'
         old_project_data = get_old_project_data(project_data_filename)
-
-
-        logging.warning(old_project_data)
         if not old_project_data:
             # get new project data
             new_project_data = get_new_project_data()
