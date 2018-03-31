@@ -113,7 +113,7 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
 
     if not project_id_list:
         logging.warning('no projects need an update')
-        sys.exit()
+        sys.exit('no projects need an update')
     else:
         project_id_list = sorted(project_id_list)
         logging.warning('will process the following projects: %s' % project_id_list)
