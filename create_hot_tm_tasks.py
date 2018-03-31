@@ -6,18 +6,14 @@
 
 #import libs
 
-
+import sys
 import os  # Require module os for file/directory handling
 import logging
 from distutils.dir_util import mkpath
-import math # calculations etc
-import numpy as np#arrays
-from osgeo import ogr, osr #handling shapefiles
-from shapely.wkt import dumps, loads
-from shapely.ops import snap
-from math import ceil
-
-from geojson_functions import load_geom_from_geojson, save_geom_as_geojson
+import ogr
+import osr
+from queue import Queue
+import threading
 from tile_functions import *
 
 import argparse
@@ -28,352 +24,14 @@ parser.add_argument('-p', '--projects', nargs='+', required=None, default=None, 
 parser.add_argument('-d', '--data_dir', required=True, type=str,
                     help='data location')
 parser.add_argument('-t', '--output_type', nargs='?', default='geojson',choices=['geojson', 'shp'])
+parser.add_argument('-g', '--group_size', required=None, default=15, type=int,
+                    help='The maximum number of results that will be merged into one mapping task.')
+parser.add_argument('-n_shape', '--neighbourhood_shape', nargs='?', default='rectangle', choices=['star', 'rectangle'],
+                    help='The search neighbourhood shape in tiles which will be used to group results into tasks')
+parser.add_argument('-n_size', '--neighbourhood_size', required=None, default=5, type=int,
+                    help='The search neighbourhood size in tiles which will be used to group results into tasks')
 
 ########################################################################################################################
-
-def GetSlice(polygon_to_slice, size):
-    slice_collection = ogr.Geometry(ogr.wkbGeometryCollection)
-
-    # get extent of geometry
-    extent_pol = polygon_to_slice.GetEnvelope()
-    xmin = extent_pol[0]
-    xmax = extent_pol[1]
-    ymin = extent_pol[2]
-    ymax = extent_pol[3]
-
-    zoom = 18
-    # get upper left left tile coordinates
-    pixel = lat_long_zoom_to_pixel_coords(ymax, xmin, zoom)
-    tile = pixel_coords_to_tile_address(pixel.x, pixel.y)
-
-    TileX_left = tile.x
-    TileY_top = tile.y
-
-    # get lower right tile coordinates
-    pixel = lat_long_zoom_to_pixel_coords(ymin, xmax, zoom)
-    tile = pixel_coords_to_tile_address(pixel.x, pixel.y)
-
-    TileX_right = tile.x
-    TileY_bottom = tile.y
-
-    TileWidth = abs(TileX_right - TileX_left)
-    TileHeight = abs(TileY_top - TileY_bottom)
-
-    TileY = TileY_top
-    TileX = TileX_left
-
-    # get rows
-    rows = int(ceil(TileHeight / size))
-    # logging.warning rows
-    # get columns
-    cols = int(ceil(TileWidth / size))
-    # logging.warning cols
-
-    # define zoom
-    zoom = 18
-
-    ############################################################
-
-    for i in range(0, rows + 1):
-        TileX = TileX_left
-        for j in range(0, cols + 1):
-
-            # Calculate lat, lon of upper left corner of tile
-            PixelX = TileX * 256
-            PixelY = TileY * 256
-            MapSize = 256 * math.pow(2, zoom)
-            x = (PixelX / MapSize) - 0.5
-            y = 0.5 - (PixelY / MapSize)
-            lon_left = round((360 * x), 8)
-            lat_top = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            PixelX = (TileX + 30) * 256
-            PixelY = (TileY + 30) * 256
-
-            MapSize = 256 * math.pow(2, zoom)
-            x = (PixelX / MapSize) - 0.5
-            # logging.warning x
-            # logging.warning y
-            y = 0.5 - (PixelY / MapSize)
-            lon_right = round((360 * x), 8)
-            lat_bottom = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            # logging.warning lon_right
-            # logging.warning lat_bottom
-
-            # Create Geometry
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            ring.AddPoint(lon_left, lat_top)
-            ring.AddPoint(lon_right, lat_top)
-            ring.AddPoint(lon_right, lat_bottom)
-            ring.AddPoint(lon_left, lat_bottom)
-            ring.AddPoint(lon_left, lat_top)
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
-            # logging.warning poly
-
-            snapped_polygon_to_slice_ogr = snap_ogr_geometries(polygon_to_slice, poly, 0.00001)
-            sliced_poly = poly.Intersection(snapped_polygon_to_slice_ogr)
-
-            # Check if it is a polygon
-            if sliced_poly.GetGeometryName() == "POLYGON":
-                if sliced_poly.GetArea() < (1 * pow(10, -10)):
-                    continue
-                else:
-                    slice_collection.AddGeometry(sliced_poly)
-
-            # Check if it is a Multipolygon
-            if sliced_poly.GetGeometryName() == "MULTIPOLYGON":
-                for l in range(0, sliced_poly.GetGeometryCount()):
-                    lo = sliced_poly.GetGeometryRef(l)
-                    if lo.GetGeometryName() == "POLYGON":
-                        # there are some crazy small polygons...
-                        if lo.GetArea() < (1 * pow(10, -10)):
-                            continue
-                        else:
-                            slice_collection.AddGeometry(lo)
-
-            # Check if it is a Geometry Collection
-            if sliced_poly.GetGeometryName() == "GEOMETRYCOLLECTION":
-                for l in range(0, sliced_poly.GetGeometryCount()):
-                    lo = sliced_poly.GetGeometryRef(l)
-                    if lo.GetGeometryName() == "POLYGON":
-                        # there are some crazy small polygons...
-                        if lo.GetArea() < (1 * pow(10, -10)):
-                            continue
-                        else:
-                            slice_collection.AddGeometry(lo)
-                    if lo.GetGeometryName() == "MULTIPOLYGON":
-                        for k in range(0, lo.GetGeometryCount()):
-                            ko = lo.GetGeometryRef(l)
-                            if ko.GetGeometryName() == "POLYGON":
-                                # there are some crazy small polygons...
-                                if ko.GetArea() < (1 * pow(10, -10)):
-                                    continue
-                                else:
-                                    slice_collection.AddGeometry(ko)
-            ####################
-            TileX = TileX + size
-
-        #####################
-        TileY = TileY + size
-    return slice_collection
-
-
-def snap_ogr_geometries(geom_a, geom_b, tolerance):
-
-    shapely_polygon_to_slice = loads(geom_a.ExportToWkt())
-    shapely_poly = loads(geom_b.ExportToWkt())
-
-    snapped_polygon_to_slice = snap(shapely_polygon_to_slice, shapely_poly, tolerance)
-    snapped_polygon_to_slice_ogr = ogr.CreateGeometryFromWkt(dumps(snapped_polygon_to_slice))
-
-    return snapped_polygon_to_slice_ogr
-
-
-def GetGrid(polygon_to_grid):
-    grid_collection = ogr.Geometry(ogr.wkbGeometryCollection)
-
-    # get extent of geometry
-    extent_pol = polygon_to_grid.GetEnvelope()
-    xmin = extent_pol[0]
-    xmax = extent_pol[1]
-    ymin = extent_pol[2]
-    ymax = extent_pol[3]
-
-    zoom = 18
-    # get upper left left tile coordinates
-    pixel = lat_long_zoom_to_pixel_coords(ymax, xmin, zoom)
-    tile = pixel_coords_to_tile_address(pixel.x, pixel.y)
-
-    TileX_left = tile.x
-    TileY_top = tile.y
-
-    # get lower right tile coordinates
-    pixel = lat_long_zoom_to_pixel_coords(ymin, xmax, zoom)
-    tile = pixel_coords_to_tile_address(pixel.x, pixel.y)
-
-    TileX_right = tile.x
-    TileY_bottom = tile.y
-
-
-    TileWidth = abs(TileX_right - TileX_left)
-    TileHeight = abs(TileY_top - TileY_bottom)
-
-    TileY = TileY_top
-    TileX = TileX_left
-
-    # get rows
-    rows = int(ceil(TileHeight / 3))
-    #logging.warning rows
-    # get columns
-    cols = int(ceil(TileWidth / 3))
-    #logging.warning cols
-
-    # define zoom
-    zoom = 18
-
-    ############################################################
-
-    for i in range(0,rows+1):
-        TileX = TileX_left
-        for j in range(0,cols+1):
-
-            # Calculate lat, lon of upper left corner of tile
-            PixelX = TileX * 256
-            PixelY = TileY * 256
-            MapSize = 256*math.pow(2,zoom)
-            x = (PixelX / MapSize) - 0.5
-            y = 0.5 - (PixelY / MapSize)
-            lon_left = round((360 * x), 8)
-            lat_top = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            PixelX = (TileX+3) * 256
-            PixelY = (TileY+3) * 256
-
-
-            MapSize = 256*math.pow(2,zoom)
-            x = (PixelX / MapSize) - 0.5
-            #logging.warning x
-            #logging.warning y
-            y = 0.5 - (PixelY / MapSize)
-            lon_right = round((360 * x), 8)
-            lat_bottom = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
-
-            #logging.warning lon_right
-            #logging.warning lat_bottom
-
-            # Create Geometry
-            ring = ogr.Geometry(ogr.wkbLinearRing)
-            ring.AddPoint(lon_left, lat_top)
-            ring.AddPoint(lon_right, lat_top)
-            ring.AddPoint(lon_right, lat_bottom)
-            ring.AddPoint(lon_left, lat_bottom)
-            ring.AddPoint(lon_left, lat_top)
-            poly = ogr.Geometry(ogr.wkbPolygon)
-            poly.AddGeometry(ring)
-            #logging.warning poly
-
-            grid_collection.AddGeometry(poly)
-            TileX = TileX + 3
-        TileY = TileY + 3
-    return grid_collection
-
-
-def IntersectWithGrid(poly, grid):
-    intersection_coll = ogr.Geometry(ogr.wkbGeometryCollection)
-    # loop throguh grid features
-    for e in range(0, grid.GetGeometryCount()):
-        grid_geom = grid.GetGeometryRef(e)
-        # check if geometries are intersecting
-        #if grid_geom.Intersects(poly) == False:
-        if grid_geom.Intersects(poly) == False:
-            continue
-        # compute the geometries
-
-        poly = snap_ogr_geometries(poly, grid_geom, 0.000000001)
-
-        intersection = grid_geom.Intersection(poly)  # intersection of grid collection and source polygon caused errors
-        # check if the outcome of intersection is a multippolygon
-        if intersection is None:
-            continue
-        elif intersection.GetGeometryName() == "POLYGON":
-        # store geometry
-            # there are some crazy small polygons...
-            if intersection.GetArea() < (1*pow(10,-10)):
-                continue
-            else:
-                intersection_coll.AddGeometry(intersection)
-
-        if intersection.GetGeometryName() == "MULTIPOLYGON" or intersection.GetGeometryName() == "GEOMETRYCOLLECTION":
-            # loop through every containing polygon and store it
-            for l in range(0, intersection.GetGeometryCount()):
-                lo = intersection.GetGeometryRef(l)
-                if lo.GetGeometryName() == "POLYGON":
-                    # there are some crazy small polygons...
-                    if lo.GetArea() < (1*pow(10,-10)):
-                        continue
-                    else:
-                        intersection_coll.AddGeometry(lo)
-
-    return intersection_coll
-
-
-def MergeSmallestNeighbour(inputcollection):
-    geom_area = []
-    output_coll = ogr.Geometry(ogr.wkbGeometryCollection)
-
-    for f in range(0, inputcollection.GetGeometryCount()):
-        h = inputcollection.GetGeometryRef(f)
-
-        h_area = h.GetArea()
-        #logging.warning(h_area)
-        geom_area.append(h_area)
-        #output_coll.AddGeometry(h)
-
-    # create array
-    geom_area_arr = np.array(geom_area)
-    sorted_array = np.argsort(geom_area)
-
-    skiplist = []
-    for j in sorted_array:
-        #logging.warning(j)
-        g = inputcollection.GetGeometryRef(int(j))
-        area = g.GetArea()
-        #logging.warning('sorted geometrys: %s' % area)
-
-
-        edge = 0
-        # reset union process flag
-        s = 0
-        # skip already processed features
-        if j in skiplist:
-            continue
-
-        for u in sorted_array:
-
-            gg = inputcollection.GetGeometryRef(int(u))
-            if u == j:
-                continue
-            if u in skiplist:
-                continue
-
-            if g.Intersects(gg) == False:
-                continue
-            else:
-                if g.Intersection(gg).GetGeometryName() != "LINESTRING":
-                    continue
-                else:
-                    temp_edge = g.Intersection(gg).Length()
-                    # logging.warning (temp_edge)
-
-                    if (g.GetArea() + gg.GetArea()) > (2.5*pow(10,-5)):
-                        continue
-
-                    if edge < temp_edge:
-                        edge = temp_edge
-                        # logging.warning(edge)
-                        # save geometrie for union
-                        fingeom = gg
-                        # save index for skip
-                        union_target_idx = u
-                        # set union process flag
-                        s = 1
-                        continue
-
-        if s == 0:
-            # add geometry to final collection
-            output_coll.AddGeometry(g)
-            continue
-        # calculate union of oriogin geom and neighbor
-        union = g.Union(fingeom)
-        # save result in final collection
-        output_coll.AddGeometry(union)
-        # append the list with processed geometries
-        skiplist.append(union_target_idx)
-        skiplist.append(int(j))
-
-    return output_coll
 
 
 def create_project_data_dict(project_id_list, data_dir):
@@ -382,22 +40,28 @@ def create_project_data_dict(project_id_list, data_dir):
 
     for project_id in project_id_list:
 
-        project_data_file = '{data_dir}/{project_id}/yes_maybe_{project_id}.geojson'.format(
+        project_data_file = '{data_dir}/{project_id}/yes_maybe_results_{project_id}.json'.format(
             data_dir=data_dir,
             project_id=project_id
         )
+        logging.warning(project_data_file)
+
         if not os.path.isfile(project_data_file):
             continue
 
-        ogr_geometry_collection = load_geom_from_geojson(project_data_file)
-        project_data_dict[project_id] = {
-            "yes_maybe": ogr_geometry_collection
-        }
+        import json
+        with open(project_data_file, 'r') as project_data_f:
+            project_data = json.load(project_data_f)
+
+            #ogr_geometry_collection = load_geom_from_geojson(project_data_file)
+            project_data_dict[project_id] = {
+                "yes_maybe_results": project_data
+            }
 
     return project_data_dict
 
 
-def create_geofile(geometries, outfile, output_type):
+def create_geofile(final_groups_dict, outfile, output_type):
     # set driver for shapefile or geojson
     if output_type == 'shp':
         driver = ogr.GetDriverByName('ESRI Shapefile')
@@ -413,25 +77,29 @@ def create_geofile(geometries, outfile, output_type):
     layer = dataSource.CreateLayer(outfile, srs, geom_type=ogr.wkbPolygon)
 
     # create fields
-    field_id = ogr.FieldDefn('id', ogr.OFTString)
+    field_id = ogr.FieldDefn('group_id', ogr.OFTInteger)
     layer.CreateField(field_id)
 
-    counter = 0
-    for geom in geometries:
-        counter += 1
-        # init feature
-        featureDefn = layer.GetLayerDefn()
-        feature = ogr.Feature(featureDefn)
-        # create polygon from wkt and set geometry
-        feature.SetGeometry(geom)
-        # set other attributes
-        feature.SetField('id', counter)
-        # add feature to layer
-        layer.CreateFeature(feature)
+    if len(final_groups_dict) < 1:
+        logging.warning('there are no geometries to save')
+    else:
+        for group_id in final_groups_dict.keys():
+            group_data = final_groups_dict[group_id]
+            group_geom = create_group_geom(group_data)
+            final_groups_dict[group_id]['group_geom'] = group_geom
+            # init feature
+            featureDefn = layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            # create polygon from wkt and set geometry
+            feature.SetGeometry(group_geom)
+            # set other attributes
+            feature.SetField('group_id', group_id)
+            # add feature to layer
+            layer.CreateFeature(feature)
 
     layer = None
     dataSoure = None
-    logging.warning('created outifle: %s.' % outfile)
+    logging.warning('created outfile: %s.' % outfile)
 
 
 def save_project_data(final_project_data_dict, output_path, output_type):
@@ -457,41 +125,296 @@ def save_project_data(final_project_data_dict, output_path, output_type):
         create_geofile(final_project_data_dict[project_id], outfile, output_type)
 
 
+def check_list_sum(x, range_val):
+    item_sum = abs(x[0]) + abs(x[1])
+    if item_sum <= range_val:
+        return True
+    else:
+        return False
+
+
+def get_neighbour_list(neighbourhood_shape, neighbourhood_size):
+
+    neighbour_list = []
+    range_val = int(neighbourhood_size/2)
+    for i in range(-range_val, range_val + 1):
+        for j in range(-range_val, range_val + 1):
+            if i == 0 and j == 0:
+                pass
+            else:
+                neighbour_list.append([i, j])
+
+    if neighbourhood_shape == 'star':
+        neighbour_list = [x for x in neighbour_list if check_list_sum(x, range_val)]
+
+    return neighbour_list
+
+
+def check_neighbours(task_x, task_y, group_id):
+
+    # look for neighbours
+    neighbours = []
+    for i, j in neighbour_list:
+        new_task_x = int(task_x) + i
+        new_task_y = int(task_y) + j
+        new_task_id = '18-{task_x}-{task_y}'.format(
+            task_x=new_task_x,
+            task_y=new_task_y
+        )
+
+        if new_task_id in yes_results_dict:
+            yes_results_dict[new_task_id]['my_group_id'] = group_id
+            neighbours.append(new_task_id)
+
+
+def create_duplicates_dict():
+    duplicated_groups = {}
+    for task_id in yes_results_dict.keys():
+        my_group_id = yes_results_dict[task_id]['my_group_id']
+        # check for other results in the neighbourhood
+        task_x = yes_results_dict[task_id]['task_x']
+        task_y = yes_results_dict[task_id]['task_y']
+
+
+        # look for neighbours
+        for i, j in neighbour_list:
+            new_task_x = int(task_x) + i
+            new_task_y = int(task_y) + j
+            new_task_id = '18-{task_x}-{task_y}'.format(
+                task_x=new_task_x,
+                task_y=new_task_y
+            )
+
+            if new_task_id in yes_results_dict:
+                neighbours_group_id = yes_results_dict[new_task_id]['my_group_id']
+                if neighbours_group_id != my_group_id:
+                    # add the other group to duplicated groups dict
+                    try:
+                        duplicated_groups[my_group_id].add(neighbours_group_id)
+                    except:
+                        duplicated_groups[my_group_id] = set([neighbours_group_id])
+                    # add my_group_id to other groupd_id in duplicated dict
+                    try:
+                        duplicated_groups[neighbours_group_id].add(my_group_id)
+                    except:
+                        duplicated_groups[neighbours_group_id] = set([my_group_id])
+
+    return duplicated_groups
+
+
+def remove_duplicates(duplicated_groups):
+    for duplicated_group_id in sorted(duplicated_groups.keys(), reverse=True):
+        logging.debug('%s: %s' % (duplicated_group_id, list(duplicated_groups[duplicated_group_id])))
+        my_duplicated_group_id = duplicated_group_id
+        for other_group_id in duplicated_groups[duplicated_group_id]:
+            if other_group_id < my_duplicated_group_id:
+                my_duplicated_group_id = other_group_id
+
+        for task_id in yes_results_dict.keys():
+            if yes_results_dict[task_id]['my_group_id'] == duplicated_group_id:
+                yes_results_dict[task_id]['my_group_id'] = my_duplicated_group_id
+
+
+def create_group_geom(group_data):
+    result_geom_collection = ogr.Geometry(ogr.wkbMultiPolygon)
+    for result, data in group_data.items():
+        result_geom = ogr.CreateGeometryFromWkt(data['wkt'])
+        result_geom_collection.AddGeometry(result_geom)
+
+    group_geom = result_geom_collection.ConvexHull()
+    return group_geom
+
+
+def split_groups(q):
+    while not q.empty():
+        group_id, group_data, group_size = q.get()
+        logging.debug('the group (%s) has %s members' % (group_id, len(group_data)))
+
+        # find min x, and min y
+        x_list = []
+        y_list = []
+
+        for result, data in group_data.items():
+            x_list.append(int(data['task_x']))
+            y_list.append(int(data['task_y']))
+
+        min_x = min(x_list)
+        max_x = max(x_list)
+        x_width = max_x - min_x
+
+        min_y = min(y_list)
+        max_y = max(y_list)
+        y_width = max_y - min_y
+
+        new_grouped_data = {
+            'a': {},
+            'b': {}
+        }
+
+        if x_width >= y_width:
+            # first split vertically
+            for result, data in group_data.items():
+                # result is in first segment
+                if int(data['task_x']) < (min_x + (x_width/2)):
+                    new_grouped_data['a'][result] = data
+                else:
+                    new_grouped_data['b'][result] = data
+        else:
+            # first split horizontally
+            for result, data in group_data.items():
+                # result is in first segment
+                if int(data['task_y']) < (min_y + (y_width / 2)):
+                    new_grouped_data['a'][result] = data
+                else:
+                    new_grouped_data['b'][result] = data
+
+        for k in ['a', 'b']:
+            logging.debug('there are %s results in %s' % (len(new_grouped_data[k]), k))
+
+            for result, data in new_grouped_data[k].items():
+                x_list.append(int(data['task_x']))
+                y_list.append(int(data['task_y']))
+
+            min_x = min(x_list)
+            max_x = max(x_list)
+            x_width = max_x - min_x
+
+            min_y = min(y_list)
+            max_y = max(y_list)
+            y_width = max_y - min_y
+
+
+            if len(new_grouped_data[k]) < group_size:
+
+                # add this check to avoid large groups groups with few items
+                if x_width * y_width > 2 * (my_neighbourhood_size * my_neighbourhood_size):
+                    q.put([group_id, new_grouped_data[k], group_size])
+                else:
+                    split_groups_list.append(new_grouped_data[k])
+                    logging.debug('add "a" to split_groups_dict')
+            else:
+                # add this group to a queue
+                q.put([group_id, new_grouped_data[k], group_size])
+
+        q.task_done()
+
+
+def create_final_groups_dict(project_data, group_size, neighbourhood_shape, neighbourhood_size):
+
+    # final groups dict will store the groups that are exported
+    final_groups_dict = {}
+    highest_group_id = 0
+
+    # create a dictionary with all results
+    global yes_results_dict
+    yes_results_dict = {}
+    for result in project_data['yes_maybe_results']:
+        yes_results_dict[result['id']] = result
+    logging.warning('created results dictionary. there are %s results.' % len(yes_results_dict))
+    if len(yes_results_dict) < 1:
+        return final_groups_dict
+
+    global neighbour_list
+    global my_neighbourhood_size
+    my_neighbourhood_size = neighbourhood_size
+
+    neighbour_list = get_neighbour_list(neighbourhood_shape, neighbourhood_size)
+    logging.warning('got neighbour list. neighbourhood_shape: %s, neighbourhood_size: %s' % (neighbourhood_shape, neighbourhood_size))
+
+    global split_groups_list
+    split_groups_list = []
+
+
+
+    # test for neighbors and set groups id
+    for task_id in sorted(yes_results_dict.keys()):
+        try:
+            # this task has already a group id, great.
+            group_id = yes_results_dict[task_id]['my_group_id']
+        except:
+            group_id = highest_group_id + 1
+            highest_group_id += 1
+            yes_results_dict[task_id]['my_group_id'] = group_id
+            logging.debug('created new group id')
+        logging.debug('group id: %s' % group_id)
+
+        # check for other results in the neighbourhood
+        task_x = yes_results_dict[task_id]['task_x']
+        task_y = yes_results_dict[task_id]['task_y']
+
+        check_neighbours(task_x, task_y, group_id)
+
+    logging.warning('added group ids to yes maybe results dict')
+
+    # check if some tasks have different groups from their neighbours
+    duplicates_dict = create_duplicates_dict()
+    while len(duplicates_dict) > 0:
+        remove_duplicates(duplicates_dict)
+        duplicates_dict = create_duplicates_dict()
+        logging.debug('there are %s duplicated groups' % len(duplicates_dict))
+
+    logging.warning('removed all duplicated group ids in yes maybe results dict')
+
+    grouped_results_dict = {}
+    for task_id in yes_results_dict.keys():
+        group_id = yes_results_dict[task_id]['my_group_id']
+        try:
+            grouped_results_dict[group_id][task_id] = yes_results_dict[task_id]
+        except:
+            grouped_results_dict[group_id] = {}
+            grouped_results_dict[group_id][task_id] = yes_results_dict[task_id]
+
+    logging.warning('created dict item for each group')
+
+    # reset highest group id since we merged several groups
+    highest_group_id = max(grouped_results_dict)
+    logging.debug('new highest group id: %s' % highest_group_id)
+
+    q = Queue(maxsize=0)
+    num_threads = 1
+
+    for group_id in grouped_results_dict.keys():
+
+        if len(grouped_results_dict[group_id]) < group_size:
+            final_groups_dict[group_id] = grouped_results_dict[group_id]
+        else:
+            group_data = grouped_results_dict[group_id]
+            # add this group to the queue
+            q.put([group_id, group_data, group_size])
+
+    logging.warning('added groups to queue.')
+
+    for i in range(num_threads):
+        worker = threading.Thread(
+            target=split_groups,
+            args=(q,))
+        worker.start()
+
+    q.join()
+    logging.warning('split all groups.')
+
+    logging.debug('there are %s split groups' % len(split_groups_list))
+
+    # add the split groups to the final groups dict
+    for group_data in split_groups_list:
+        new_group_id = highest_group_id + 1
+        highest_group_id += 1
+        final_groups_dict[new_group_id] = group_data
+
+    logging.warning('created %s groups.' % len(final_groups_dict))
+    return final_groups_dict
+
+
 ########################################################################################################################
 
 
-def create_hot_tm_tasks(project_data_dict):
-
+def create_hot_tm_tasks(project_data_dict, group_size, neighbourhood_shape, neighbourhood_size):
 
     final_project_data_dict = {}
-
     for project_id, project_data in project_data_dict.items():
 
-        ogr_geometry_collection = project_data['yes_maybe']
-        logging.warning('project %s, start create_hot_tm_tasks function' % project_id)
-
-        # create output geometry collections
-        final_coll = ogr.Geometry(ogr.wkbGeometryCollection)
-        logging.warning('got %s geometries in input geometry collection.' % ogr_geometry_collection.GetGeometryCount())
-
-        # loop through every geometry in given input geometry collection
-        count = 0
-        for geom in ogr_geometry_collection:
-            count += 1
-            slice_collection = GetSlice(geom, 30)
-            for feature in slice_collection:
-                # start grid function
-                gridCollection = GetGrid(feature)
-                intersection_coll = IntersectWithGrid(feature, gridCollection)
-                # Merge Neighbours
-                pre_step_0 = MergeSmallestNeighbour(intersection_coll)
-                pre_step_1 = MergeSmallestNeighbour(pre_step_0)
-                pre_step = MergeSmallestNeighbour(pre_step_1)
-                for q in range(0, pre_step.GetGeometryCount()):
-                    final_geom = pre_step.GetGeometryRef(q)
-                    final_coll.AddGeometry(final_geom)
-
-        final_project_data_dict[project_id] = final_coll
+        final_groups_dict = create_final_groups_dict(project_data, group_size, neighbourhood_shape, neighbourhood_size)
+        final_project_data_dict[project_id] = final_groups_dict
 
     return final_project_data_dict
 
@@ -513,5 +436,6 @@ if __name__ == '__main__':
         logging.warning('have a look at the input arguments, something went wrong there.')
 
     project_data_dict = create_project_data_dict(args.projects, args.data_dir)
-    final_project_data_dict = create_hot_tm_tasks(project_data_dict)
-    save_project_data(final_project_data_dict, args.data_dir, 'geojson')
+    final_project_data_dict = create_hot_tm_tasks(project_data_dict, args.group_size, args.neighbourhood_shape, args.neighbourhood_size)
+    save_project_data(final_project_data_dict, args.data_dir, args.output_type)
+    sys.exit()

@@ -40,18 +40,23 @@ def pixel_coords_zoom_to_lat_lon(PixelX, PixelY, zoom):
     MapSize = 256 * math.pow(2, zoom)
     x = (PixelX / MapSize) - 0.5
     y = 0.5 - (PixelY / MapSize)
-    p.x = round((360 * x), 8)
-    p.y = round((90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi), 8)
+    p.x = (360 * x)
+    p.y = (90 - 360 * math.atan(math.exp(-y * 2 * math.pi)) / math.pi)
     # always remember lon --> x, lat --> y !!!
     return p
 
 
 def pixel_coords_to_tile_address(x,y):
     t = Tile()
-    t.x = int(math.floor(x / 256))
-    t.y = int(math.floor(y / 256))
+    #t.x = int(math.floor(x / 256))
+    #t.y = int(math.floor(y / 256))
+
+    t.x = int(round(x / 256, 0))
+    t.y = int(round(y / 256, 0))
+
     #print"\nThe tile coordinates are x = {} and y = {}".format(t.x, t.y)
     return t
+
 
 def geometry_from_tile_coords(TileX, TileY, TileZ):
 

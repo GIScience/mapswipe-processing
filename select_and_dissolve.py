@@ -104,43 +104,7 @@ def transform_geometry(geometry, in_proj, out_proj):
 
 
 def dissolve_project_data(multipolygon_geometry):
-    # wgs and utm
-    wgs = osr.SpatialReference()
-    wgs.ImportFromEPSG(4326)
-    utm = get_utm_epsg(multipolygon_geometry)
-
-    # transform geometry
-    utm_geometry = transform_geometry(multipolygon_geometry, wgs, utm)
-
-    # Delaunay Triangulation
-    delaunay_geometry = utm_geometry.DelaunayTriangulation()
-    logging.warning('performed delaunay triangulation')
-
-    # Select only valid triangles
-    delaunay_select = ogr.Geometry(ogr.wkbMultiPolygon)
-    for i in range(0, delaunay_geometry.GetGeometryCount()):
-        g = delaunay_geometry.GetGeometryRef(i)
-
-        area = float(g.GetArea())
-        perimeter = g.Boundary().Length()
-        # if (area <= 40000.0) & (perimeter <= 800.0):
-        if (area <= 40000.0) & (perimeter <= 650.0):
-            delaunay_select.AddGeometry(g)
-            continue
-    logging.warning('selected valid triangles')
-
-    # transform geometries
-    wgs_geometry = transform_geometry(delaunay_select, utm, wgs)
-
-    # dissolve all geometries
-    dissolved_geometry = wgs_geometry.UnionCascaded()
-    logging.warning('dissolved geometry')
-
-    # destroy all other things
-    utm_geometry = None
-    delaunay_select = None
-    wgs_geometry = None
-
+    dissolved_geometry = multipolygon_geometry.UnionCascaded()
     return dissolved_geometry
 
 
@@ -164,17 +128,20 @@ def create_geofile(geometries, outfile, output_type):
     layer.CreateField(field_id)
 
     counter = 0
-    for geom in geometries:
-        counter += 1
-        # init feature
-        featureDefn = layer.GetLayerDefn()
-        feature = ogr.Feature(featureDefn)
-        # create polygon from wkt and set geometry
-        feature.SetGeometry(geom)
-        # set other attributes
-        feature.SetField('id', counter)
-        # add feature to layer
-        layer.CreateFeature(feature)
+    if not geometries:
+        logging.warning('there are no geometries to save')
+    else:
+        for geom in geometries:
+            counter += 1
+            # init feature
+            featureDefn = layer.GetLayerDefn()
+            feature = ogr.Feature(featureDefn)
+            # create polygon from wkt and set geometry
+            feature.SetGeometry(geom)
+            # set other attributes
+            feature.SetField('id', counter)
+            # add feature to layer
+            layer.CreateFeature(feature)
 
     layer = None
     dataSoure = None
@@ -212,6 +179,18 @@ def save_dissolved_project_data(dissolved_project_data_dict, output_path, output
         )
         create_geofile(dissolved_project_data_dict[project_id]['bad_image'], outfile, output_type)
 
+        # save yes maybe results
+        outfile = '{final_output_path}/yes_maybe_results_{project_id}.json'.format(
+            final_output_path=final_output_path,
+            project_id=project_id,
+            output_type=output_type
+
+        )
+        with open(outfile, 'w') as out_file:
+            json.dump(dissolved_project_data_dict[project_id]['yes_maybe_results'], out_file)
+        logging.warning('created outfile: %s' % outfile)
+
+
 
 ########################################################################################################################
 def select_and_dissolve(project_data_dict):
@@ -227,14 +206,15 @@ def select_and_dissolve(project_data_dict):
         dissolved_yes_maybe_geometry = dissolve_project_data(multipolygon_geometry)
 
         # filter bad image
-        filtered_project_data = filter_project_data(project_data, 'bad_image')
-        multipolygon_geometry = multipolygon_from_project_data(filtered_project_data)
+        filtered_project_data_bad = filter_project_data(project_data, 'bad_image')
+        multipolygon_geometry = multipolygon_from_project_data(filtered_project_data_bad)
         dissolved_bad_image_geometry = dissolve_project_data(multipolygon_geometry)
 
         # add to dictionary
         dissolved_project_data_dict[project_id] = {
             "yes_maybe": dissolved_yes_maybe_geometry,
-            "bad_image": dissolved_bad_image_geometry
+            "bad_image": dissolved_bad_image_geometry,
+            "yes_maybe_results": filtered_project_data
         }
 
     return dissolved_project_data_dict
