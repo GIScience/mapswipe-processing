@@ -77,7 +77,6 @@ def get_updated_projects(old_project_data, new_project_data):
         else:
             pass
     logging.warning('returned list with updated projects: %s' % project_id_list)
-    project_id_list = sorted(project_id_list)
     return project_id_list
 
 
@@ -102,6 +101,13 @@ def run_mapswipe_processing(project_id_list, output_path, output_type, modus, al
         else:
             new_project_data = get_new_project_data()
             project_id_list = get_updated_projects(old_project_data, new_project_data)
+
+    if not project_id_list:
+        logging.warning('no projects need an update')
+        sys.exit()
+    else:
+        project_id_list = sorted(project_id_list)
+        logging.warning('will process the following projects: %s' % project_id_list)
 
     for project_id in project_id_list:
 
