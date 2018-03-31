@@ -14,7 +14,7 @@ from select_and_dissolve import select_and_dissolve
 from select_and_dissolve import save_dissolved_project_data
 import argparse
 import logging
-import sys
+import time
 import json
 import requests
 import error_handling
