@@ -1,5 +1,5 @@
 {
-  "name": "process_all_looped_py",
+  "name": "run_mapswipe_processing",
   "script": "run_mapswipe_processing.py",
   "cwd": "/data/mapswipe-processing/",
   "exec_interpreter": "/home/mapswipe-processing/venv/bin/python",
