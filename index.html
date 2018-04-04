@@ -1,0 +1,113 @@
+<!doctype html>
+<html class="no-js" lang="">
+      <head>
+        <meta charset="utf-8">
+        <meta http-equiv="x-ua-compatible" content="ie=edge">
+        <meta http-equiv="refresh" content="900" >
+        <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
+        <meta http-equiv="Pragma" content="no-cache" />
+        <meta http-equiv="Expires" content="0" />
+        <title>HeiGIT MapSwipe Analytics</title>
+        <meta name="description" content="">
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+
+        <link href="http://www2.geog.uni-heidelberg.de/media/favicon.ico?v=2" rel="shortcut icon">
+        <!-- Place favicon.ico in the root directory -->
+
+        <!-- include sript and style sheets -->
+        <link rel="stylesheet" href="css/bootstrap.min.css" >
+        <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css">
+	    <link rel="stylesheet" href="css/leaflet.css" />
+        <script src="js/jquery.min.js"></script>
+        <script src="js/bootstrap.min.js"></script>
+        <script src="js/leaflet.js"></script>
+        <script src="js/leaflet.ajax.js"></script>
+        <script src="js/bing.min.js"></script>
+        <script src="js/processing.js"></script>
+      </head>
+      <body onload="show_maps()">
+    		<nav class="navbar navbar-default">
+          <div class="container-fluid">
+            <!-- Collect the nav links, forms, and other content for toggling -->
+            <div class="collapse navbar-collapse" id="navBar">
+        	  <ul class="nav navbar-nav">
+          	 <li><a href="http://www.geog.uni-heidelberg.de/gis/heigit_en.html" target="_blank"><img  src="img/heigit_logo_base.svg" height="70px"></a></li>
+            </ul>
+            <ul class ="nav navbar-nav navbar-right">
+              <li><a href= "http://mapswipe.org"><img src="img/mapswipe-logo.svg" height="70px"></a></li>
+            </ul>
+          </div><!-- /.navbar-collapse -->
+        </div><!-- /.container-fluid -->
+      </nav>
+      <div class="col-md-12" align="center" style="padding-left: 100px; padding-right: 100px; padding-bottom: 50px; padding-top: 50px;">
+	  <h2>MapSwipe Processing</h2>
+	  <h4>This project can help you to download processed data that is produced by volunteers using the MapSwipe App. We filter out unreliable answers and derive geometries that are ready to use in the HOT Tasking Manager.</h4>
+	  </div>
+
+	  <div class="col-md-12" align="center" style="padding-left: 50px; padding-right: 50px; padding-bottom: 50px;">
+	  <h2>Download Data:</h2>
+	  <p>We provide different datasets for downloading. See below for a more detailed description of each dataset.</p>
+	  <form class="form-inline" onsubmit="get_data()">
+		  <div class="form-group">
+			  <label for="project_id">Project ID:</label>
+			  <input type="number" class="form-control" id="project_id" required>
+	  	</div>
+		  <div class="form-group">
+			  <label for="dataset">Dateset:</label>
+			   <select class="form-control" id="dataset">
+				  <option value="results">Raw Results</option>
+				  <option value="yes_maybe">Yes and Maybe Results</option>
+				  <option value="bad_image">Bad Imagery Results</option>
+				  <option value="hot_tm_tasks">HOT Tasking Manager Geometries</option>
+				</select>
+	  	</div>
+		  <button type="submit" class="btn btn-default">Get Data</button>
+	  </form>
+	  </div>
+	  <div class="col-md-12" align="center" style="padding-left: 50px; padding-right: 50px;">
+	  <h2>Examples:</h2>
+		  <div class="col-md-12" align="center">
+		  <div class="col-md-6" style="padding-bottom: 25px;">
+		  <h4>HOT Tasking Manager Geometries:</h4>
+		  <p>This dataset contains shapes that are ready to use in the HOT Tasking Manager. Currently, the geometries consist of maximum 15 MapSwipe Tasks, where at least one user indicated the presence of a building. The filter criteria and size of the tasks can be adapted on request.</p>
+		  <div id="hot_tm_geometries_map" style="height:500px; width:100%; background-color:lightblue"></div>
+		  </div>
+		  <div class="col-md-6" style="padding-bottom: 25px;">
+		  <h4>Yes and Maybe Results:</h4>
+			  <p>This dataset contains all results where at least one mapswipe user submitted a <em>yes</em> or <em>maybe</em> classification. The output dataset depicts the union of all selected results.</p>
+		  <div id="yes_maybe_results_map" style="height:500px; width:100%; background-color:lightblue"></div>
+		  </div>
+		  </div>
+		  <div class="col-md-12" align="center">
+		  <div class="col-md-6" style="padding-bottom: 25px;">
+		  <h4>Bad Imagery Results:</h4>
+		  <p>This dataset contains all results where at least one mapswipe user submitted a <em>bad_image</em> classification and no other classifications are more frequently submitted. The output dataset depicts the union of all selected results.</p>
+		  <div id="bad_imagery_results_map" style="height:500px; width:100%; background-color:lightblue"></div>
+		  </div>
+		  <div class="col-md-6" style="padding-bottom: 25px;">
+		  <h4>Raw Results:</h4>
+		  <p>Raw Result contain information on MapSwipe Tasks where at least one user submitted a results. If there are several results per task by different users, the individual results are aggregated. For each task a <em>yes_count</em>, <em>maybe_count</em> and <em>bad_imagery_count</em> is provided. However, there isn't a <em>no_building_count</em> per task.</p>
+		  <div id="raw_results_map" style="height:500px; width:100%; background-color:lightblue"></div>
+		  </div>
+		  </div>
+	  </div>
+	  
+
+	  
+	  <div class="col-md-12" align="center" style="padding:50px">
+	  <h2>Contact:</h2>
+          Heidelberg Institute for Geoinformation Technology <br>
+          Department of Geography, Chair of GIScience<br>
+  				Heidelberg University, Germany
+  				<p style="clear: both;">
+  					<a href="http://www.geog.uni-heidelberg.de/gis/heigit_en.html" target="_blank">http://www.geog.uni-heidelberg.de/gis/heigit_en.html</a>
+  					<br><br>
+  					Email:
+  					<br>
+  					info[at]mapswipe.heigit.org
+  				</p>
+  				<p>This Website was created by Marcel Reinmuth, Benjamin Herfort and Michael Dollinger. Special Thanks go to Jess Cahill for the work on improving the design. </p>
+				<p>This work has kindly been supported by the Klaus Tschira Foundation (KTS) Heidelberg in the context of establishing the Heidelberg Institute for Geoinformation Technology (HeiGIT).</p>
+		</div>
+    </body>
+</html>
