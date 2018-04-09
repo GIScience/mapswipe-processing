@@ -88,6 +88,33 @@ def create_geofile(final_groups_dict, outfile, output_type):
             group_geom = create_group_geom(group_data)
             final_groups_dict[group_id]['group_geom'] = group_geom
             # init feature
+
+            if group_geom.GetGeometryName() == 'POLYGON':
+                featureDefn = layer.GetLayerDefn()
+                feature = ogr.Feature(featureDefn)
+                # create polygon from wkt and set geometry
+                feature.SetGeometry(group_geom)
+                # set other attributes
+                feature.SetField('group_id', group_id)
+                # add feature to layer
+                layer.CreateFeature(feature)
+                feature.Destroy
+            elif group_geom.GetGeometryName() == 'MULTIPOLYGON':
+                for geom_part in group_geom:
+                    featureDefn = layer.GetLayerDefn()
+                    feature = ogr.Feature(featureDefn)
+                    # create polygon from wkt and set geometry
+                    feature.SetGeometry(group_geom)
+                    # set other attributes
+                    feature.SetField('group_id', group_id)
+                    # add feature to layer
+                    layer.CreateFeature(feature)
+                    feature.Destroy
+            else:
+                print('other geometry type: %s' % group_geom.GetGeometryName())
+                print(group_geom)
+                continue
+
             featureDefn = layer.GetLayerDefn()
             feature = ogr.Feature(featureDefn)
             # create polygon from wkt and set geometry

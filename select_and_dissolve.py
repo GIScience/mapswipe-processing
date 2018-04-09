@@ -43,10 +43,10 @@ def yes_maybe_condition_true(x):
         return True
     elif x['yes_count'] > 1 and x['yes_count'] >= x['bad_imagery_count']:
         return True
-    #elif x['maybe_count'] > 1 and x['maybe_count'] >= x['bad_imagery_count']:
-    #    return True
-    #elif x['yes_count'] >= 1 and x['maybe_count'] >= 1 and ((x['yes_count'] + x['maybe_count']) >= x['bad_imagery_count']):
-    #    return True
+    elif x['maybe_count'] > 1 and x['maybe_count'] >= x['bad_imagery_count']:
+        return True
+    elif x['yes_count'] >= 1 and x['maybe_count'] >= 1 and ((x['yes_count'] + x['maybe_count']) >= x['bad_imagery_count']):
+        return True
     else:
         return False
 
