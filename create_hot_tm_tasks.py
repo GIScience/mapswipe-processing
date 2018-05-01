@@ -115,15 +115,6 @@ def create_geofile(final_groups_dict, outfile, output_type):
                 print(group_geom)
                 continue
 
-            featureDefn = layer.GetLayerDefn()
-            feature = ogr.Feature(featureDefn)
-            # create polygon from wkt and set geometry
-            feature.SetGeometry(group_geom)
-            # set other attributes
-            feature.SetField('group_id', group_id)
-            # add feature to layer
-            layer.CreateFeature(feature)
-
     layer = None
     dataSoure = None
     logging.warning('created outfile: %s.' % outfile)
