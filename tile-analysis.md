@@ -37,4 +37,4 @@ As a result of the change in sidelength and inner angles, the area of the tiles 
 -	Area and side length of a tile will continuously decrease with distance to the equator
 -	within one project the differences in size depend on the north-south extend of the project
 -	The tile shapes differ from rectangular form the further away they are from the equator
-- Find a <a href="https://github.com/GIScience/mapswipe-processing/examples/tiles.geojson">example geojson file</a> with calculated area and side length for given task_y or the Y-coordiantes of the tile center. You can use this file in QGIS or any other GIS software.
+- Find a <a href="https://github.com/GIScience/mapswipe-processing/tree/master/examples">example geojson file</a> with calculated area and side length for given task_y or the Y-coordiantes of the tile center. You can use this file in QGIS or any other GIS software.
