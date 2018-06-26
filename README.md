@@ -3,8 +3,13 @@
 This project can help you to download processed data that is produced by volunteers using the MapSwipe App. We filter out unreliable answers and derive geometries that are ready to use in the HOT Tasking Manager.
 
 Since, at least three different people work on every MapSwipe tile (that are the little squares) further aggregation of the answers of one tile is needed. But also adjacent tiles marked with the same answer need to be put together. We need to filter out unreliable answers and finally derive geometries that are ready to use in the HOT Tasking Manager.
-The scripts in this repository can help you to download and process data that is produced by volunteers using the MapSwipe App. Nevertheless, you can also use the data we already processed for you. You can download the following datasets directly from our website:
 
+The scripts in this repository can help you to download and process data that is produced by volunteers using the MapSwipe App. Nevertheless, you can also use the data we already processed for you. You can download the following datasets directly from our [website](http://mapswipe.heigit.org/processing/).
+
+## FAQ Section
+We got some first questions about the MapSwipe data:
+
+* [What is the size of a tile in MapSwipe?](tile-analysis.md)
 
 ## How to download and process data on your own
 You can run the complete import script like this:
