@@ -1,14 +1,35 @@
+function show_filter_field(input_value) {
+    console.log(input_value)
+    if (input_value == 'enriched_results'){
+       document.getElementById("filter_div").style.display = "inline";
+    }
+    else {
+      document.getElementById("filter_div").style.display = "none";
+    }
+}
+
+
 function get_data() {
     project_id = document.getElementById('project_id').value.toString()
     dataset = document.getElementById('dataset').value
+    filter = document.getElementById('filter').value.toString()
+    if (dataset == 'enriched_results'){
+        url = 'http://mapswipe.heigit.org:8080/geoserver/ms_layers/ows?service=WFS&version=1.0.0&request=GetFeature&typeName=ms_layers:final_' + project_id + '&outputFormat=application%2Fjson'
+
+        if (filter != '') {
+            url = url + '&CQL_FILTER=' + filter
+        }
+
+    } else {
     url = 'http://mapswipe.heigit.org/processing/data/' + project_id + '/' + dataset + '_' + project_id + '.geojson'
+    }
     var win = window.open(url);
     win.focus();
 }
 
 
 function show_maps(){
-    var maps = ['hot_tm_geometries_map', 'yes_maybe_results_map', 'bad_imagery_results_map', 'raw_results_map']
+    var maps = ['hot_tm_geometries_map', 'yes_maybe_results_map', 'bad_imagery_results_map', 'raw_results_map', 'enriched_results_map', 'enriched_filtered_results_map']
     for (var i = 0; i < maps.length; i++) {
         show_map(maps[i])
 }
@@ -22,6 +43,10 @@ function add_example_layer(map, div_id_name) {
        url = 'examples/yes_maybe_examples.geojson'
     } else if (div_id_name == 'bad_imagery_results_map') {
        url = 'examples/bad_image_examples.geojson'
+    }  else if (div_id_name == 'enriched_results_map') {
+       url = 'examples/enriched_examples.geojson'
+    }  else if (div_id_name == 'enriched_filtered_results_map') {
+       url = 'examples/enriched_filtered_examples.geojson'
     } else {
         url = 'examples/results_examples.geojson'
     }
