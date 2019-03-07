@@ -27,7 +27,7 @@ parser.add_argument('-t', '--output_type', nargs='?', default='geojson',choices=
 
 def download_project_data(project_id):
     # get project information, loop through every project
-    project_url = 'http://api.mapswipe.org/projects/{project_id}.json'.format(
+    project_url = 'http://35.243.198.52/results/results_{project_id}.json'.format(
         project_id=project_id
     )
 
@@ -61,8 +61,17 @@ def check_project_data(project_data, project_id):
 
 def add_wkt_geometry(project_data, project_id):
 
-    for item in project_data:
-        item[u'wkt'] = geometry_from_tile_coords(int(item[u'task_x']), int(item[u'task_y']), int(item[u'task_z']))
+    for task_id in project_data.keys():
+
+        task_z, task_x, task_y = task_id.split('-')
+        project_data[task_id]['task_x'] = task_x
+        project_data[task_id]['task_y'] = task_y
+        project_data[task_id]['task_z'] = task_z
+        project_data[task_id]['project'] = project_data[task_id]['project_id']
+        project_data[task_id]['id'] = task_id
+        del project_data[task_id]['project_id']
+
+        project_data[task_id]['wkt'] = geometry_from_tile_coords(int(task_x), int(task_y), int(task_z))
 
     logging.warning('Project %s, added wkt geometry.' % project_id)
     return project_data
@@ -196,7 +205,12 @@ def download_data(project_id_list):
             continue
 
         project_data = add_wkt_geometry(project_data, project_id)
-        project_data_dict[project_id] = project_data
+
+        project_data_list = []
+        for task_id in project_data.keys():
+            project_data_list.append(project_data[task_id])
+
+        project_data_dict[project_id] = project_data_list
 
     return project_data_dict
 
