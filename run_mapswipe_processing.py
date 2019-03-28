@@ -52,7 +52,7 @@ def save_project_file(filename, project_data):
 
 
 def get_new_project_data():
-    url = 'http://api.mapswipe.org/projects.json'
+    url = 'http://35.243.198.52/projects.json'
     r = requests.get(url)
     project_data = json.loads(r.text)
     logging.warning('got project data from mapswipe api.')
