@@ -7,4 +7,4 @@ pkg-resources==0.0.0
 requests==2.20.0
 rocketchat-API==0.6.5
 Shapely==1.6.4
-urllib3==1.23
+urllib3==1.26.5
