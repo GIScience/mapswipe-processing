@@ -2,7 +2,7 @@ certifi==2018.1.18
 chardet==3.0.4
 GDAL==2.2.3
 idna==2.6
-numpy==1.14.2
+numpy==1.22.0
 pkg-resources==0.0.0
 requests==2.20.0
 rocketchat-API==0.6.5
